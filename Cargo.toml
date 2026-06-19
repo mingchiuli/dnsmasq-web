@@ -54,7 +54,7 @@ leptos_axum = { version = "0.8.6", optional = true }
 mime_guess = { version = "2", optional = true }
 rust-embed = { version = "8", optional = true }
 tokio = { version = "1", features = ["fs", "macros", "net", "process", "rt-multi-thread", "sync", "time"], optional = true }
-tower-http = { version = "0.6", features = ["trace"], optional = true }
+tower-http = { version = "0.7", features = ["trace"], optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 web-sys = { version = "0.3", features = ["HtmlInputElement", "HtmlTextAreaElement", "Storage", "Window"], optional = true }
 
