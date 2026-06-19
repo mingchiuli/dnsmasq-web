@@ -61,8 +61,8 @@ build.
 Push a tag to build release artifacts:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 The GitHub Actions workflow builds Linux musl `x86_64` and `aarch64` tarballs
