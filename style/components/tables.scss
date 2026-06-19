@@ -1,0 +1,47 @@
+.record-table {
+  overflow-x: auto;
+}
+
+.record-table .thaw-table {
+  min-width: 720px;
+}
+
+.actions-col,
+.actions-cell {
+  width: 150px;
+  text-align: right;
+}
+
+.row-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.empty-table {
+  border: 1px dashed #c9d3df;
+  border-radius: 6px;
+  padding: 18px;
+  color: #667386;
+}
+
+.stacked-cell {
+  display: grid;
+  gap: 4px;
+}
+
+.stacked-cell span {
+  color: #667386;
+}
+
+.dialog-form {
+  display: grid;
+  gap: 14px;
+  min-width: min(420px, calc(100vw - 64px));
+}
+
+.raw-textarea .thaw-textarea__textarea {
+  min-height: 560px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+}

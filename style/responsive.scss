@@ -1,0 +1,20 @@
+@media (max-width: 720px) {
+  .app-shell {
+    width: min(100vw - 20px, 1280px);
+    padding-top: 14px;
+  }
+
+  .toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toolbar-actions {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .record-table .thaw-table {
+    min-width: 640px;
+  }
+}

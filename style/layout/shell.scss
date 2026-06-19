@@ -1,0 +1,75 @@
+.app-shell {
+  width: min(1280px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 24px 0 40px;
+}
+
+.toolbar,
+.section-head,
+.status-row,
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+}
+
+.toolbar {
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.toolbar h1,
+.section-head h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.toolbar h1 {
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.toolbar-actions,
+.row-actions {
+  gap: 8px;
+}
+
+.content {
+  background: #ffffff;
+  border: 1px solid #d9e0e8;
+  border-radius: 8px;
+  padding: 18px;
+}
+
+.table-section,
+.raw-editor,
+.backups {
+  display: grid;
+  gap: 16px;
+}
+
+.section-head {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-head h2 {
+  font-size: 18px;
+}
+
+.status-row {
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.alerts {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.tabs {
+  margin-bottom: 18px;
+  overflow-x: auto;
+}

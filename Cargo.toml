@@ -1,0 +1,78 @@
+[package]
+name = "dnsmasqweb"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "Apache-2.0"
+publish = false
+
+[features]
+default = ["ssr"]
+ssr = [
+    "dep:anyhow",
+    "dep:axum",
+    "dep:bcrypt",
+    "dep:clap",
+    "dep:leptos",
+    "dep:leptos_axum",
+    "dep:mime_guess",
+    "dep:rust-embed",
+    "dep:tokio",
+    "dep:tower-http",
+    "dep:tracing-subscriber",
+    "dep:uuid",
+    "leptos/ssr",
+]
+csr = [
+    "dep:console_error_panic_hook",
+    "dep:js-sys",
+    "dep:leptos",
+    "dep:thaw",
+    "dep:wasm-bindgen",
+    "dep:web-sys",
+    "leptos/csr",
+    "thaw/csr",
+]
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"], optional = true }
+
+leptos = { version = "0.8.11", default-features = false, optional = true }
+thaw = { version = "0.5.0-beta", default-features = false, optional = true }
+
+anyhow = { version = "1", optional = true }
+axum = { version = "0.8.9", optional = true }
+bcrypt = { version = "0.17", optional = true }
+clap = { version = "4", features = ["derive", "env"], optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+js-sys = { version = "0.3", optional = true }
+leptos_axum = { version = "0.8.6", optional = true }
+mime_guess = { version = "2", optional = true }
+rust-embed = { version = "8", optional = true }
+tokio = { version = "1", features = ["fs", "macros", "net", "process", "rt-multi-thread", "sync", "time"], optional = true }
+tower-http = { version = "0.6", features = ["trace"], optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
+web-sys = { version = "0.3", features = ["HtmlInputElement", "HtmlTextAreaElement", "Storage", "Window"], optional = true }
+
+[dependencies.wasm-bindgen]
+version = "0.2"
+optional = true
+
+[[bin]]
+name = "dnsmasqweb"
+path = "src/main.rs"
+required-features = ["ssr"]
+
+[[bin]]
+name = "dnsmasqweb-frontend"
+path = "src/frontend.rs"
+required-features = ["csr"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true

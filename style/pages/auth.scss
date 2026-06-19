@@ -1,0 +1,36 @@
+.auth-shell {
+  width: min(420px, 100%);
+  margin: 12vh auto 0;
+}
+
+.auth-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.auth-head h1,
+.auth-panel h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.auth-head h1 {
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.auth-panel {
+  display: grid;
+  gap: 14px;
+  background: #ffffff;
+  border: 1px solid #d9e0e8;
+  border-radius: 8px;
+  padding: 18px;
+}
+
+.auth-panel h2 {
+  font-size: 18px;
+}
