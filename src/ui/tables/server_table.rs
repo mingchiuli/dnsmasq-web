@@ -7,7 +7,7 @@ use thaw::{
 use crate::config::model::ServerRecord;
 use crate::i18n::{Locale, Msg, t};
 use crate::ui::components::editable_table::EditableTable;
-use crate::ui::tables::{EditableRow, remove_row, upsert_row};
+use crate::ui::tables::{EditableRow, find_row, remove_row, upsert_row};
 use crate::ui::text::localized;
 
 #[component]
@@ -28,15 +28,14 @@ pub fn ServerTable(
     };
 
     let open_edit = move |id: u64| {
-        records.with(|items| {
-            let Some(row) = items.iter().find(|row| row.id == id) else {
-                return;
-            };
+        if let Some(value) = find_row(records, id) {
+            value.with(|record| {
+                domain.set(record.domain.clone().unwrap_or_default());
+                upstream.set(record.upstream.clone());
+            });
             editing_id.set(Some(id));
-            domain.set(row.value.domain.clone().unwrap_or_default());
-            upstream.set(row.value.upstream.clone());
             dialog_open.set(true);
-        });
+        }
     };
 
     let save = move || {
@@ -79,11 +78,11 @@ pub fn ServerTable(
                             key=|row| row.id
                             children=move |row| {
                                 let id = row.id;
-                                let domain_text = row.value.domain.unwrap_or_else(|| "*".into());
+                                let value = row.value;
                                 view! {
                                     <TableRow>
-                                        <TableCell>{domain_text}</TableCell>
-                                        <TableCell>{row.value.upstream}</TableCell>
+                                        <TableCell>{move || value.with(|record| record.domain.as_deref().unwrap_or("*").to_string())}</TableCell>
+                                        <TableCell>{move || value.with(|record| record.upstream.clone())}</TableCell>
                                         <TableCell class="actions-cell">
                                             <div class="row-actions">
                                                 <Button

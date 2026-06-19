@@ -7,7 +7,7 @@ use thaw::{
 use crate::config::model::HostRecord;
 use crate::i18n::{Locale, Msg, t};
 use crate::ui::components::editable_table::EditableTable;
-use crate::ui::tables::{EditableRow, remove_row, upsert_row};
+use crate::ui::tables::{EditableRow, find_row, remove_row, upsert_row};
 use crate::ui::text::localized;
 
 #[component]
@@ -28,15 +28,14 @@ pub fn HostRecordTable(
     };
 
     let open_edit = move |id: u64| {
-        records.with(|items| {
-            let Some(row) = items.iter().find(|row| row.id == id) else {
-                return;
-            };
+        if let Some(value) = find_row(records, id) {
+            value.with(|record| {
+                names.set(record.names.join(", "));
+                ips.set(record.ips.join(", "));
+            });
             editing_id.set(Some(id));
-            names.set(row.value.names.join(", "));
-            ips.set(row.value.ips.join(", "));
             dialog_open.set(true);
-        });
+        }
     };
 
     let save = move || {
@@ -78,12 +77,11 @@ pub fn HostRecordTable(
                             key=|row| row.id
                             children=move |row| {
                                 let id = row.id;
-                                let names_text = row.value.names.join(", ");
-                                let ips_text = row.value.ips.join(", ");
+                                let value = row.value;
                                 view! {
                                     <TableRow>
-                                        <TableCell>{names_text}</TableCell>
-                                        <TableCell>{ips_text}</TableCell>
+                                        <TableCell>{move || value.with(|record| record.names.join(", "))}</TableCell>
+                                        <TableCell>{move || value.with(|record| record.ips.join(", "))}</TableCell>
                                         <TableCell class="actions-cell">
                                             <div class="row-actions">
                                                 <Button

@@ -7,7 +7,7 @@ use thaw::{
 use crate::config::model::CnameRecord;
 use crate::i18n::{Locale, Msg, t};
 use crate::ui::components::editable_table::EditableTable;
-use crate::ui::tables::{EditableRow, remove_row, upsert_row};
+use crate::ui::tables::{EditableRow, find_row, remove_row, upsert_row};
 use crate::ui::text::localized;
 
 #[component]
@@ -28,15 +28,14 @@ pub fn CnameTable(
     };
 
     let open_edit = move |id: u64| {
-        records.with(|items| {
-            let Some(row) = items.iter().find(|row| row.id == id) else {
-                return;
-            };
+        if let Some(value) = find_row(records, id) {
+            value.with(|record| {
+                alias.set(record.alias.clone());
+                canonical.set(record.canonical.clone());
+            });
             editing_id.set(Some(id));
-            alias.set(row.value.alias.clone());
-            canonical.set(row.value.canonical.clone());
             dialog_open.set(true);
-        });
+        }
     };
 
     let save = move || {
@@ -78,10 +77,11 @@ pub fn CnameTable(
                             key=|row| row.id
                             children=move |row| {
                                 let id = row.id;
+                                let value = row.value;
                                 view! {
                                     <TableRow>
-                                        <TableCell>{row.value.alias}</TableCell>
-                                        <TableCell>{row.value.canonical}</TableCell>
+                                        <TableCell>{move || value.with(|record| record.alias.clone())}</TableCell>
+                                        <TableCell>{move || value.with(|record| record.canonical.clone())}</TableCell>
                                         <TableCell class="actions-cell">
                                             <div class="row-actions">
                                                 <Button

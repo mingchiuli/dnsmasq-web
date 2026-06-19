@@ -7,7 +7,7 @@ use thaw::{
 use crate::config::model::AddressRecord;
 use crate::i18n::{Locale, Msg, t};
 use crate::ui::components::editable_table::EditableTable;
-use crate::ui::tables::{EditableRow, remove_row, upsert_row};
+use crate::ui::tables::{EditableRow, find_row, remove_row, upsert_row};
 use crate::ui::text::localized;
 
 #[component]
@@ -28,15 +28,14 @@ pub fn AddressTable(
     };
 
     let open_edit = move |id: u64| {
-        records.with(|items| {
-            let Some(row) = items.iter().find(|row| row.id == id) else {
-                return;
-            };
+        if let Some(value) = find_row(records, id) {
+            value.with(|record| {
+                domain.set(record.domain.clone());
+                ip.set(record.ip.clone());
+            });
             editing_id.set(Some(id));
-            domain.set(row.value.domain.clone());
-            ip.set(row.value.ip.clone());
             dialog_open.set(true);
-        });
+        }
     };
 
     let save = move || {
@@ -78,10 +77,11 @@ pub fn AddressTable(
                             key=|row| row.id
                             children=move |row| {
                                 let id = row.id;
+                                let value = row.value;
                                 view! {
                                     <TableRow>
-                                        <TableCell>{row.value.domain}</TableCell>
-                                        <TableCell>{row.value.ip}</TableCell>
+                                        <TableCell>{move || value.with(|record| record.domain.clone())}</TableCell>
+                                        <TableCell>{move || value.with(|record| record.ip.clone())}</TableCell>
                                         <TableCell class="actions-cell">
                                             <div class="row-actions">
                                                 <Button
