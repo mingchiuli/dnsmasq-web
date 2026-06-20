@@ -1,9 +1,6 @@
 {
   "lsp": {
     "rust-analyzer": {
-      "binary": {
-        "ignore_system_version": true
-      },
       "initialization_options": {
         "cargo": {
           "features": ["ssr", "csr"],
