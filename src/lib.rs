@@ -11,7 +11,7 @@ pub mod storage;
 
 #[cfg(feature = "csr")]
 pub mod app;
-#[cfg(feature = "csr")]
+#[cfg(any(feature = "csr", feature = "ssr"))]
 pub mod i18n;
 #[cfg(any(feature = "csr", feature = "ssr"))]
 pub mod server_fns;

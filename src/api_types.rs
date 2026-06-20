@@ -2,15 +2,17 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::config::model::{DnsRecords, ValidationIssue};
+use crate::i18n::Locale;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AuthStatusResponse {
     pub configured: bool,
+    pub authenticated: bool,
+    pub locale: Locale,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AuthResponse {
-    pub token: String,
     pub expires_at: DateTime<Utc>,
 }
 

@@ -1,4 +1,6 @@
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Locale {
     #[default]
     ZhCn,
@@ -23,9 +25,20 @@ impl Locale {
 
 impl From<&str> for Locale {
     fn from(value: &str) -> Self {
-        match value {
-            "en" => Self::En,
-            _ => Self::ZhCn,
+        let primary = value
+            .split(',')
+            .next()
+            .unwrap_or_default()
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase();
+
+        if primary == "en" || primary.starts_with("en-") {
+            Self::En
+        } else {
+            Self::ZhCn
         }
     }
 }

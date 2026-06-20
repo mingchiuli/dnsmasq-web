@@ -3,7 +3,7 @@ use tokio::fs;
 use tracing::{error, info, warn};
 
 use crate::api_types::{
-    AuthResponse, AuthStatusResponse, BackupInfo, CommandReport, ConfigResponse, RawConfigResponse,
+    AuthStatusResponse, BackupInfo, CommandReport, ConfigResponse, RawConfigResponse,
     RestoreBackupResponse, SaveResponse, ServiceStatus,
 };
 use crate::config::model::{ConfigLine, DnsRecords, ValidationLevel};
@@ -12,21 +12,33 @@ use crate::config::records::{collect_records_from_config, replace_managed_record
 use crate::config::render::render_config;
 use crate::config::validate::{has_errors, validate_records};
 use crate::error::{AppError, AppResult};
+use crate::i18n::Locale;
 use crate::server::auth;
-use crate::server::state::AppState;
+use crate::server::state::{AppState, CreatedSession};
 use crate::storage::{atomic_write, backup};
 
-pub async fn auth_status(state: &AppState) -> AuthStatusResponse {
+pub async fn auth_status(
+    state: &AppState,
+    token: Option<&str>,
+    locale: Locale,
+) -> AuthStatusResponse {
+    let authenticated = match token {
+        Some(token) => state.verify_session(token).await,
+        None => false,
+    };
+
     AuthStatusResponse {
         configured: state.is_password_configured().await,
+        authenticated,
+        locale,
     }
 }
 
-pub async fn setup_password(state: &AppState, password: String) -> AppResult<AuthResponse> {
+pub async fn setup_password(state: &AppState, password: String) -> AppResult<CreatedSession> {
     auth::configure_password(state, password).await
 }
 
-pub async fn login(state: &AppState, password: String) -> AppResult<AuthResponse> {
+pub async fn login(state: &AppState, password: String) -> AppResult<CreatedSession> {
     auth::login(state, password).await
 }
 

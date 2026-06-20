@@ -40,6 +40,9 @@ jobs:
         with:
           tool: trunk
 
+      - name: Test
+        run: cargo test --tests --features ssr
+
       - name: Build frontend assets
         run: env -u NO_COLOR trunk build --release --no-default-features --features csr
 

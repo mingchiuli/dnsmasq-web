@@ -6,16 +6,15 @@ use tokio::task;
 use tokio::time;
 use uuid::Uuid;
 
-use crate::api_types::AuthResponse;
 use crate::error::AppError;
-use crate::server::state::AppState;
+use crate::server::state::{AppState, CreatedSession};
 
 pub const SESSION_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
 pub async fn configure_password(
     state: &AppState,
     password: String,
-) -> Result<AuthResponse, AppError> {
+) -> Result<CreatedSession, AppError> {
     let password = normalize_password(password)?;
     let password_hash = task::spawn_blocking(move || hash(password, DEFAULT_COST))
         .await
@@ -35,7 +34,7 @@ pub async fn configure_password(
     Ok(state.create_session().await)
 }
 
-pub async fn login(state: &AppState, password: String) -> Result<AuthResponse, AppError> {
+pub async fn login(state: &AppState, password: String) -> Result<CreatedSession, AppError> {
     let password = normalize_password(password)?;
     let password_hash = {
         let auth = state.inner.auth.read().await;

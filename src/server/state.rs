@@ -4,7 +4,6 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use tokio::sync::RwLock;
 
-use crate::api_types::AuthResponse;
 use crate::dnsmasq::command::DnsmasqCommand;
 use crate::dnsmasq::systemd::Systemd;
 use crate::server::auth::new_session;
@@ -34,6 +33,12 @@ pub struct AuthSession {
     pub expires_at: DateTime<Utc>,
 }
 
+#[derive(Debug)]
+pub struct CreatedSession {
+    pub token: String,
+    pub expires_at: DateTime<Utc>,
+}
+
 impl AppState {
     pub fn new(
         config_file: PathBuf,
@@ -55,14 +60,14 @@ impl AppState {
         self.inner.auth.read().await.password_hash.is_some()
     }
 
-    pub async fn create_session(&self) -> AuthResponse {
+    pub async fn create_session(&self) -> CreatedSession {
         let (token, expires_at) = new_session();
         let mut auth = self.inner.auth.write().await;
         auth.sessions.push(AuthSession {
             token: token.clone(),
             expires_at,
         });
-        AuthResponse { token, expires_at }
+        CreatedSession { token, expires_at }
     }
 
     pub async fn verify_session(&self, token: &str) -> bool {

@@ -4,16 +4,16 @@ use thaw::{MessageBar, MessageBarBody, MessageBarIntent, MessageBarLayout, Tab, 
 
 mod auth;
 mod notice;
-mod storage;
 mod tabs;
 
 use crate::api_types::{
-    BackupInfo, ConfigResponse, SaveRawRequest, SaveRecordsRequest, TestConfigRequest,
+    BackupInfo, ConfigResponse, SaveRawRequest, SaveRecordsRequest, ServiceStatus,
+    TestConfigRequest,
 };
 use crate::config::model::{
     AddressRecord, CnameRecord, DnsRecords, HostRecord, ServerRecord, ValidationIssue,
 };
-use crate::i18n::{Msg, t};
+use crate::i18n::{Locale, Msg, t};
 use crate::ui::api;
 use crate::ui::components::confirm_dialog::ConfirmDialog;
 use crate::ui::components::status_badge::StatusBadge;
@@ -28,20 +28,18 @@ use crate::ui::tables::{EditableRow, editable_rows, row_values};
 
 use self::auth::{AuthGate, AuthMode, is_unauthorized};
 use self::notice::NoticeMessage;
-use self::storage::{load_locale, load_session_token, save_locale, save_session_token};
 use self::tabs::{TAB_ADDRESS, TAB_BACKUPS, TAB_CNAME, TAB_HOST_RECORD, TAB_RAW, TAB_SERVER};
 
 #[component]
 pub fn dashboard_page() -> impl IntoView {
-    let token = RwSignal::new(load_session_token());
     let auth_mode = RwSignal::new(AuthMode::Loading);
     let password = RwSignal::new(String::new());
-    let locale = RwSignal::new(load_locale());
+    let locale = RwSignal::new(Locale::default());
     let active_tab = RwSignal::new(String::from(TAB_ADDRESS));
     let busy = RwSignal::new(false);
     let message = RwSignal::new(None::<NoticeMessage>);
     let warnings = RwSignal::new(Vec::<ValidationIssue>::new());
-    let service_status = RwSignal::new(crate::api_types::ServiceStatus::default());
+    let service_status = RwSignal::new(ServiceStatus::default());
     let unmanaged_line_count = RwSignal::new(0usize);
 
     let address = RwSignal::new(Vec::<EditableRow<AddressRecord>>::new());
@@ -80,15 +78,13 @@ pub fn dashboard_page() -> impl IntoView {
         service_status.set(response.service);
     };
 
-    let clear_session = move || {
-        token.set(None);
-        save_session_token(None);
+    let clear_auth_form = move || {
         password.set(String::new());
     };
 
     let handle_error = move |error: String| {
         if is_unauthorized(&error) {
-            clear_session();
+            clear_auth_form();
             auth_mode.set(AuthMode::Login);
             message.set(Some(NoticeMessage::Localized(Msg::LoginRequired)));
         } else {
@@ -98,11 +94,10 @@ pub fn dashboard_page() -> impl IntoView {
 
     let load_all = move || {
         busy.set(true);
-        let token_value = token.get();
         spawn_local(async move {
-            let config = api::get_config(token_value.clone()).await;
-            let raw = api::get_raw_config(token_value.clone()).await;
-            let backup_list = api::list_backups(token_value).await;
+            let config = api::get_config().await;
+            let raw = api::get_raw_config().await;
+            let backup_list = api::list_backups().await;
 
             match config {
                 Ok(response) => {
@@ -123,11 +118,10 @@ pub fn dashboard_page() -> impl IntoView {
     };
 
     let sync_all_silent = move || {
-        let token_value = token.get();
         spawn_local(async move {
-            let config = api::get_config(token_value.clone()).await;
-            let raw = api::get_raw_config(token_value.clone()).await;
-            let backup_list = api::list_backups(token_value).await;
+            let config = api::get_config().await;
+            let raw = api::get_raw_config().await;
+            let backup_list = api::list_backups().await;
 
             match config {
                 Ok(response) => apply_config_response(response),
@@ -147,15 +141,16 @@ pub fn dashboard_page() -> impl IntoView {
         spawn_local(async move {
             match api::auth_status().await {
                 Ok(status) => {
+                    locale.set(status.locale);
                     if status.configured {
-                        if token.get_untracked().is_some() {
+                        if status.authenticated {
                             load_all();
                         } else {
                             auth_mode.set(AuthMode::Login);
                             busy.set(false);
                         }
                     } else {
-                        clear_session();
+                        clear_auth_form();
                         auth_mode.set(AuthMode::Setup);
                         busy.set(false);
                     }
@@ -166,6 +161,14 @@ pub fn dashboard_page() -> impl IntoView {
                     busy.set(false);
                 }
             }
+        });
+    };
+
+    let switch_locale = move || {
+        let next = locale.get_untracked().next();
+        locale.set(next);
+        spawn_local(async move {
+            let _ = api::set_locale(next).await;
         });
     };
 
@@ -185,9 +188,7 @@ pub fn dashboard_page() -> impl IntoView {
             };
 
             match response {
-                Ok(response) => {
-                    save_session_token(Some(&response.token));
-                    token.set(Some(response.token));
+                Ok(_) => {
                     password.set(String::new());
                     auth_mode.set(AuthMode::Authenticated);
                     load_all();
@@ -202,11 +203,9 @@ pub fn dashboard_page() -> impl IntoView {
 
     let save_records = move |apply: bool| {
         busy.set(true);
-        let token_value = token.get();
         let records = current_records();
         spawn_local(async move {
-            let response =
-                api::save_records(token_value, SaveRecordsRequest { records, apply }).await;
+            let response = api::save_records(SaveRecordsRequest { records, apply }).await;
             match response {
                 Ok(response) => {
                     warnings.set(response.warnings);
@@ -225,11 +224,9 @@ pub fn dashboard_page() -> impl IntoView {
 
     let save_raw = move |apply: bool| {
         busy.set(true);
-        let token_value = token.get();
         let content = raw_content.get();
         spawn_local(async move {
-            let response =
-                api::save_raw_config(token_value, SaveRawRequest { content, apply }).await;
+            let response = api::save_raw_config(SaveRawRequest { content, apply }).await;
             match response {
                 Ok(response) => {
                     warnings.set(response.warnings);
@@ -248,15 +245,11 @@ pub fn dashboard_page() -> impl IntoView {
 
     let test_raw = move || {
         busy.set(true);
-        let token_value = token.get();
         let content = raw_content.get();
         spawn_local(async move {
-            match api::test_config(
-                token_value,
-                TestConfigRequest {
-                    content: Some(content),
-                },
-            )
+            match api::test_config(TestConfigRequest {
+                content: Some(content),
+            })
             .await
             {
                 Ok(report) => {
@@ -277,9 +270,8 @@ pub fn dashboard_page() -> impl IntoView {
     };
 
     let refresh_backups = move || {
-        let token_value = token.get();
         spawn_local(async move {
-            match api::list_backups(token_value).await {
+            match api::list_backups().await {
                 Ok(response) => backups.set(response),
                 Err(error) => handle_error(error),
             }
@@ -288,9 +280,8 @@ pub fn dashboard_page() -> impl IntoView {
 
     let restore_backup = move |id: String| {
         busy.set(true);
-        let token_value = token.get();
         spawn_local(async move {
-            match api::restore_backup(token_value, id).await {
+            match api::restore_backup(id).await {
                 Ok(_) => {
                     message.set(Some(NoticeMessage::Localized(Msg::RestoreApplied)));
                     load_all();
@@ -320,12 +311,11 @@ pub fn dashboard_page() -> impl IntoView {
         };
         busy.set(true);
         delete_backup_open.set(false);
-        let token_value = token.get();
         spawn_local(async move {
-            match api::delete_backup(token_value.clone(), id).await {
+            match api::delete_backup(id).await {
                 Ok(()) => {
                     message.set(Some(NoticeMessage::Localized(Msg::BackupDeleted)));
-                    match api::list_backups(token_value).await {
+                    match api::list_backups().await {
                         Ok(response) => backups.set(response),
                         Err(error) => handle_error(error),
                     }
@@ -352,12 +342,11 @@ pub fn dashboard_page() -> impl IntoView {
     };
 
     let logout = move || {
-        let token_value = token.get();
-        clear_session();
+        clear_auth_form();
         auth_mode.set(AuthMode::Login);
         message.set(None);
         spawn_local(async move {
-            let _ = api::logout(token_value).await;
+            let _ = api::logout().await;
         });
     };
 
@@ -378,27 +367,19 @@ pub fn dashboard_page() -> impl IntoView {
                         message_text=message_text
                         locale=locale.into()
                         on_submit=move |_| submit_auth()
-                        on_toggle_locale=move |_| {
-                            let next = locale.get_untracked().next();
-                            save_locale(next);
-                            locale.set(next);
-                        }
+                        on_toggle_locale=move |_| switch_locale()
                     />
                 }
             >
                 <Toolbar
-                    title="dnsmasqweb"
+                    title="dnsmasq-web"
                     on_refresh=move |_| load_all()
                     on_save=move |_| save_current()
                     on_apply=move |_| apply_current()
                     on_logout=move |_| logout()
                     busy=busy.into()
                     locale=locale.into()
-                    on_toggle_locale=move |_| {
-                        let next = locale.get_untracked().next();
-                        save_locale(next);
-                        locale.set(next);
-                    }
+                    on_toggle_locale=move |_| switch_locale()
                 />
 
                 <div class="status-row">
