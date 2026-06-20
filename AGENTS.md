@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-`dnsmasqweb` is a single-binary Rust web UI for managing a narrow dnsmasq static DNS surface:
+`dnsmasq-web` is a single-binary Rust web UI for managing a narrow dnsmasq static DNS surface:
 
 - `address=`
 - `host-record=`

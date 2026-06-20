@@ -1,4 +1,4 @@
-# dnsmasqweb
+# dnsmasq-web
 
 Small Rust web UI for managing a limited dnsmasq static DNS surface:
 
@@ -84,7 +84,7 @@ Use `--dnsmasq-bin` and `--service` if your paths or service name differ.
 
 ```ini
 [Unit]
-Description=dnsmasqweb
+Description=dnsmasq-web
 After=network.target
 
 [Service]
