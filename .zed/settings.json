@@ -3,14 +3,14 @@
     "rust-analyzer": {
       "initialization_options": {
         "cargo": {
-          "features": ["ssr", "csr"],
+          "features": ["ssr"],
           "targetDir": true
         },
         "procMacro": {
           "enable": true
         },
         "check": {
-          "features": ["ssr", "csr"]
+          "features": ["ssr"]
         }
       }
     }
