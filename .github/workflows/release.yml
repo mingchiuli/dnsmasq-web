@@ -38,10 +38,10 @@ jobs:
       - name: Install cargo-leptos
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-leptos
+          tool: cargo-leptos@0.3.6
 
       - name: Build frontend assets
-        run: cargo leptos build --release --frontend-only
+        run: RUST_BACKTRACE=1 cargo leptos build --release --frontend-only -vv
 
       - name: Test
         run: cargo test --tests --no-default-features --features ssr
