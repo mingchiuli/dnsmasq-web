@@ -63,9 +63,9 @@ DNSMASQWEB_SERVICE
 For production, bind to `127.0.0.1` or a private/VPN address.
 
 On first browser access after startup, set the admin password in the UI. The
-password hash and session tokens are kept in server memory. Browser tokens are
-stored in `localStorage`, expire after 24 hours, and become invalid after the
-service restarts.
+password hash and session tokens are kept in server memory. The browser receives
+the session token in a `HttpOnly` `SameSite=Lax` cookie, which expires after 24
+hours and becomes invalid after the service restarts.
 
 ## Permissions
 

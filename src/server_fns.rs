@@ -18,15 +18,14 @@ use crate::config::model::DnsRecords;
 use crate::error::AppError;
 use crate::i18n::Locale;
 #[cfg(feature = "ssr")]
+use crate::server::auth::SESSION_COOKIE;
+#[cfg(feature = "ssr")]
 use crate::server::services;
 #[cfg(feature = "ssr")]
 use crate::server::state::AppState;
 
 #[cfg(feature = "ssr")]
 const LOCALE_COOKIE: &str = "dnsmasqweb_locale";
-#[cfg(feature = "ssr")]
-const SESSION_COOKIE: &str = "dnsmasqweb_session";
-
 #[server(AuthStatus, "/api")]
 pub async fn auth_status() -> Result<AuthStatusResponse, ServerFnError> {
     let state = app_state()?;
@@ -79,13 +78,13 @@ pub async fn logout() -> Result<(), ServerFnError> {
 
 #[server(GetConfig, "/api")]
 pub async fn get_config() -> Result<ConfigResponse, ServerFnError> {
-    let state = authed_state().await?;
+    let state = app_state()?;
     services::get_config(&state).await.map_err(server_error)
 }
 
 #[server(SaveRecords, "/api")]
 pub async fn save_records(records: DnsRecords, apply: bool) -> Result<SaveResponse, ServerFnError> {
-    let state = authed_state().await?;
+    let state = app_state()?;
     services::save_records(&state, records, apply)
         .await
         .map_err(server_error)
@@ -93,13 +92,13 @@ pub async fn save_records(records: DnsRecords, apply: bool) -> Result<SaveRespon
 
 #[server(GetRawConfig, "/api")]
 pub async fn get_raw_config() -> Result<RawConfigResponse, ServerFnError> {
-    let state = authed_state().await?;
+    let state = app_state()?;
     services::get_raw_config(&state).await.map_err(server_error)
 }
 
 #[server(SaveRawConfig, "/api")]
 pub async fn save_raw_config(content: String, apply: bool) -> Result<SaveResponse, ServerFnError> {
-    let state = authed_state().await?;
+    let state = app_state()?;
     services::save_raw_config(&state, content, apply)
         .await
         .map_err(server_error)
@@ -107,7 +106,7 @@ pub async fn save_raw_config(content: String, apply: bool) -> Result<SaveRespons
 
 #[server(TestConfig, "/api")]
 pub async fn test_config(content: Option<String>) -> Result<CommandReport, ServerFnError> {
-    let state = authed_state().await?;
+    let state = app_state()?;
     services::test_config(&state, content)
         .await
         .map_err(server_error)
@@ -115,25 +114,25 @@ pub async fn test_config(content: Option<String>) -> Result<CommandReport, Serve
 
 #[server(ReloadDnsmasq, "/api")]
 pub async fn reload_dnsmasq() -> Result<CommandReport, ServerFnError> {
-    let state = authed_state().await?;
+    let state = app_state()?;
     services::reload_dnsmasq(&state).await.map_err(server_error)
 }
 
 #[server(Status, "/api")]
 pub async fn status() -> Result<ServiceStatus, ServerFnError> {
-    let state = authed_state().await?;
+    let state = app_state()?;
     Ok(services::status(&state).await)
 }
 
 #[server(ListBackups, "/api")]
 pub async fn list_backups() -> Result<Vec<BackupInfo>, ServerFnError> {
-    let state = authed_state().await?;
+    let state = app_state()?;
     services::list_backups(&state).await.map_err(server_error)
 }
 
 #[server(RestoreBackup, "/api")]
 pub async fn restore_backup(id: String) -> Result<RestoreBackupResponse, ServerFnError> {
-    let state = authed_state().await?;
+    let state = app_state()?;
     services::restore_backup(&state, id)
         .await
         .map_err(server_error)
@@ -141,7 +140,7 @@ pub async fn restore_backup(id: String) -> Result<RestoreBackupResponse, ServerF
 
 #[server(DeleteBackup, "/api")]
 pub async fn delete_backup(id: String) -> Result<(), ServerFnError> {
-    let state = authed_state().await?;
+    let state = app_state()?;
     services::delete_backup(&state, id)
         .await
         .map_err(server_error)
@@ -151,20 +150,6 @@ pub async fn delete_backup(id: String) -> Result<(), ServerFnError> {
 fn app_state() -> Result<AppState, ServerFnError> {
     use_context::<AppState>()
         .ok_or_else(|| ServerFnError::ServerError(String::from("missing app state")))
-}
-
-#[cfg(feature = "ssr")]
-async fn authed_state() -> Result<AppState, ServerFnError> {
-    let state = app_state()?;
-    let authorized = match request_cookie(SESSION_COOKIE) {
-        Some(token) => state.verify_session(&token).await,
-        None => false,
-    };
-    if authorized {
-        Ok(state)
-    } else {
-        Err(ServerFnError::ServerError(String::from("unauthorized")))
-    }
 }
 
 #[cfg(feature = "ssr")]

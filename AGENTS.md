@@ -49,7 +49,7 @@ Use Leptos server functions for frontend/backend calls. Do not add a parallel ha
 - Shared backend logic lives in `src/server/services.rs`.
 - Axum routes dynamically mount registered server function paths in `src/server/routes.rs`.
 
-Authentication currently uses an in-memory bcrypt password hash and in-memory session tokens. Browser session tokens are stored in `localStorage`.
+Authentication currently uses an in-memory bcrypt password hash and in-memory session tokens. Browser session tokens are stored in a `HttpOnly` `SameSite=Lax` cookie. Axum middleware in `src/server/routes.rs` protects server function routes by default; only auth status, locale, setup, login, and logout are public.
 
 ## Frontend Notes
 

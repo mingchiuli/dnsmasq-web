@@ -10,6 +10,7 @@ use crate::error::AppError;
 use crate::server::state::{AppState, CreatedSession};
 
 pub const SESSION_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+pub const SESSION_COOKIE: &str = "dnsmasqweb_session";
 
 pub async fn configure_password(
     state: &AppState,
