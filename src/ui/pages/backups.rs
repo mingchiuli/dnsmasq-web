@@ -1,13 +1,10 @@
 use leptos::prelude::*;
-use thaw::{
-    Button, ButtonAppearance, ButtonType, Table, TableBody, TableCell, TableHeader,
-    TableHeaderCell, TableRow,
-};
 #[cfg(feature = "hydrate")]
 use wasm_bindgen::JsValue;
 
 use crate::api_types::BackupInfo;
 use crate::i18n::{Locale, Msg, t};
+use crate::ui::components::button::{Button, ButtonSize, ButtonVariant};
 
 #[component]
 pub fn backups_panel(
@@ -21,21 +18,21 @@ pub fn backups_panel(
         <section class="backups">
             <div class="section-head">
                 <h2>{move || t(locale.get(), Msg::Backups)}</h2>
-                <Button button_type=ButtonType::Button on_click=move |_| on_refresh.run(())>
+                <Button on_click=move |_| on_refresh.run(())>
                     {move || t(locale.get(), Msg::Refresh)}
                 </Button>
             </div>
             <div class="record-table">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHeaderCell>{move || t(locale.get(), Msg::BackupId)}</TableHeaderCell>
-                            <TableHeaderCell>{move || t(locale.get(), Msg::BackupSize)}</TableHeaderCell>
-                            <TableHeaderCell>"Path"</TableHeaderCell>
-                            <TableHeaderCell class="actions-col">{move || t(locale.get(), Msg::Actions)}</TableHeaderCell>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
+                <table class="ui-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">{move || t(locale.get(), Msg::BackupId)}</th>
+                            <th scope="col">{move || t(locale.get(), Msg::BackupSize)}</th>
+                            <th scope="col">"Path"</th>
+                            <th scope="col" class="actions-col">{move || t(locale.get(), Msg::Actions)}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
                         <For
                             each=move || backups.get()
                             key=|backup| backup.id.clone()
@@ -47,41 +44,39 @@ pub fn backups_panel(
                                 let delete_id = backup_id.clone();
                                 let local_time = format_local_time(&backup.created_at.to_rfc3339(), locale.get_untracked());
                                 view! {
-                                    <TableRow>
-                                        <TableCell>
+                                    <tr>
+                                        <td>
                                             <div class="stacked-cell">
                                                 <strong>{local_time}</strong>
                                                 <span>{backup_id}</span>
                                             </div>
-                                        </TableCell>
-                                        <TableCell>{move || format!("{} {}", size, t(locale.get(), Msg::BackupSize))}</TableCell>
-                                        <TableCell>{path}</TableCell>
-                                        <TableCell class="actions-cell">
+                                        </td>
+                                        <td>{move || format!("{} {}", size, t(locale.get(), Msg::BackupSize))}</td>
+                                        <td>{path}</td>
+                                        <td class="actions-cell">
                                             <div class="row-actions">
                                                 <Button
-                                                    size=thaw::ButtonSize::Small
-                                                    appearance=ButtonAppearance::Subtle
-                                                    button_type=ButtonType::Button
+                                                    size=ButtonSize::Small
+                                                    variant=ButtonVariant::Subtle
                                                     on_click=move |_| on_restore.run(restore_id.clone())
                                                 >
                                                     {move || t(locale.get(), Msg::Restore)}
                                                 </Button>
                                                 <Button
-                                                    size=thaw::ButtonSize::Small
-                                                    appearance=ButtonAppearance::Subtle
-                                                    button_type=ButtonType::Button
+                                                    size=ButtonSize::Small
+                                                    variant=ButtonVariant::Subtle
                                                     on_click=move |_| on_delete.run(delete_id.clone())
                                                 >
                                                     {move || t(locale.get(), Msg::Delete)}
                                                 </Button>
                                             </div>
-                                        </TableCell>
-                                    </TableRow>
+                                        </td>
+                                    </tr>
                                 }
                             }
                         />
-                    </TableBody>
-                </Table>
+                    </tbody>
+                </table>
             </div>
         </section>
     }

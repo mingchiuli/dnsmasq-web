@@ -1,5 +1,4 @@
 use leptos::prelude::*;
-use thaw::{Badge, BadgeAppearance, BadgeColor};
 
 use crate::api_types::ServiceStatus;
 use crate::i18n::{Locale, Msg, t};
@@ -7,15 +6,13 @@ use crate::i18n::{Locale, Msg, t};
 #[component]
 pub fn status_badge(status: Signal<ServiceStatus>, locale: Signal<Locale>) -> impl IntoView {
     view! {
-        <Badge
-            appearance=BadgeAppearance::Tint
-            color=Signal::derive(move || {
-                if status.with(|status| status.active) {
-                    BadgeColor::Success
-                } else {
-                    BadgeColor::Danger
-                }
-            })
+        <span
+            class=move || if status.with(|status| status.active) {
+                "status-badge status-badge--active"
+            } else {
+                "status-badge status-badge--inactive"
+            }
+            role="status"
         >
             {move || {
                 let status = status.get();
@@ -27,6 +24,6 @@ pub fn status_badge(status: Signal<ServiceStatus>, locale: Signal<Locale>) -> im
                     status.description
                 }
             }}
-        </Badge>
+        </span>
     }
 }

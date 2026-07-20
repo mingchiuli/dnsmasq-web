@@ -1,12 +1,11 @@
 use leptos::prelude::*;
-use thaw::{
-    Button, ButtonAppearance, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface,
-    DialogTitle, Field, Input, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow,
-};
 
 use crate::config::model::AddressRecord;
 use crate::i18n::{Locale, Msg, t};
-use crate::ui::components::editable_table::EditableTable;
+use crate::ui::components::editable_table::{
+    EditableTable, EditableTableActions, EditableTableColumns, RecordEditor,
+};
+use crate::ui::components::form_controls::{Field, Input};
 use crate::ui::tables::{EditableRow, find_row, remove_row, upsert_row};
 use crate::ui::text::localized;
 
@@ -15,7 +14,7 @@ pub fn address_table(
     records: RwSignal<Vec<EditableRow<AddressRecord>>>,
     locale: Signal<Locale>,
 ) -> impl IntoView {
-    let dialog_open = RwSignal::new(false);
+    let modal_open = RwSignal::new(false);
     let editing_id = RwSignal::new(None::<u64>);
     let domain = RwSignal::new(String::new());
     let ip = RwSignal::new(String::new());
@@ -24,7 +23,7 @@ pub fn address_table(
         editing_id.set(None);
         domain.set(String::new());
         ip.set(String::new());
-        dialog_open.set(true);
+        modal_open.set(true);
     };
 
     let open_edit = move |id: u64| {
@@ -34,7 +33,7 @@ pub fn address_table(
                 ip.set(record.ip.clone());
             });
             editing_id.set(Some(id));
-            dialog_open.set(true);
+            modal_open.set(true);
         }
     };
 
@@ -47,100 +46,57 @@ pub fn address_table(
                 ip: ip.get_untracked(),
             },
         );
-        dialog_open.set(false);
+        modal_open.set(false);
     };
 
     view! {
-        <section class="table-section">
-            <div class="section-head">
-                <h2>{move || t(locale.get(), Msg::Address)}</h2>
-                <Button button_type=thaw::ButtonType::Button on_click=move |_| open_new()>
-                    {move || t(locale.get(), Msg::Add)}
-                </Button>
-            </div>
+        <EditableTable
+            title=localized(locale, Msg::Address)
+            is_empty=Signal::derive(move || records.with(Vec::is_empty))
+            empty_message=Signal::derive(move || t(locale.get(), Msg::AddressEmpty))
+            locale=locale
+            on_add=move |_| open_new()
+        >
+            <EditableTableColumns slot>
+                <th scope="col">{move || t(locale.get(), Msg::Domain)}</th>
+                <th scope="col">{move || t(locale.get(), Msg::Ip)}</th>
+            </EditableTableColumns>
+            <For
+                each=move || records.get()
+                key=|row| row.id
+                children=move |row| {
+                    let id = row.id;
+                    let value = row.value;
+                    view! {
+                        <tr>
+                            <td>{move || value.with(|record| record.domain.clone())}</td>
+                            <td>{move || value.with(|record| record.ip.clone())}</td>
+                            <EditableTableActions
+                                locale=locale
+                                on_edit=move |_| open_edit(id)
+                                on_delete=move |_| remove_row(records, id)
+                            />
+                        </tr>
+                    }
+                }
+            />
+        </EditableTable>
 
-            <EditableTable
-                is_empty=Signal::derive(move || records.with(Vec::is_empty))
-                empty_message=Signal::derive(move || t(locale.get(), Msg::AddressEmpty))
-            >
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHeaderCell>{move || t(locale.get(), Msg::Domain)}</TableHeaderCell>
-                            <TableHeaderCell>{move || t(locale.get(), Msg::Ip)}</TableHeaderCell>
-                            <TableHeaderCell class="actions-col">{move || t(locale.get(), Msg::Actions)}</TableHeaderCell>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        <For
-                            each=move || records.get()
-                            key=|row| row.id
-                            children=move |row| {
-                                let id = row.id;
-                                let value = row.value;
-                                view! {
-                                    <TableRow>
-                                        <TableCell>{move || value.with(|record| record.domain.clone())}</TableCell>
-                                        <TableCell>{move || value.with(|record| record.ip.clone())}</TableCell>
-                                        <TableCell class="actions-cell">
-                                            <div class="row-actions">
-                                                <Button
-                                                    size=thaw::ButtonSize::Small
-                                                    button_type=thaw::ButtonType::Button
-                                                    on_click=move |_| open_edit(id)
-                                                >
-                                                    {move || t(locale.get(), Msg::Edit)}
-                                                </Button>
-                                                <Button
-                                                    size=thaw::ButtonSize::Small
-                                                    appearance=ButtonAppearance::Subtle
-                                                    button_type=thaw::ButtonType::Button
-                                                    on_click=move |_| remove_row(records, id)
-                                                >
-                                                    {move || t(locale.get(), Msg::Delete)}
-                                                </Button>
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                }
-                            }
-                        />
-                    </TableBody>
-                </Table>
-            </EditableTable>
-
-            <Dialog open=dialog_open>
-                <DialogSurface>
-                    <DialogContent>
-                        <DialogTitle>{move || t(locale.get(), Msg::Address)}</DialogTitle>
-                        <DialogBody>
-                            <div class="dialog-form">
-                                <Field label=localized(locale, Msg::Domain)>
-                                    <Input
-                                        value=domain
-                                        placeholder=localized(locale, Msg::AddressDomainPlaceholder)
-                                    />
-                                </Field>
-                                <Field label=localized(locale, Msg::Ip)>
-                                    <Input value=ip placeholder="10.10.0.1" />
-                                </Field>
-                            </div>
-                        </DialogBody>
-                        <DialogActions>
-                            <Button button_type=thaw::ButtonType::Button on_click=move |_| dialog_open.set(false)>
-                                {move || t(locale.get(), Msg::Cancel)}
-                            </Button>
-                            <Button
-                                appearance=ButtonAppearance::Primary
-                                button_type=thaw::ButtonType::Button
-                                on_click=move |_| save()
-                            >
-                                {move || t(locale.get(), Msg::Save)}
-                            </Button>
-                        </DialogActions>
-                    </DialogContent>
-                </DialogSurface>
-            </Dialog>
-        </section>
+        <RecordEditor
+            open=modal_open
+            title=localized(locale, Msg::Address)
+            locale=locale
+            on_save=move |_| save()
+        >
+            <Field label=localized(locale, Msg::Domain)>
+                <Input
+                    value=domain
+                    placeholder=localized(locale, Msg::AddressDomainPlaceholder)
+                />
+            </Field>
+            <Field label=localized(locale, Msg::Ip)>
+                <Input value=ip placeholder="10.10.0.1" />
+            </Field>
+        </RecordEditor>
     }
 }

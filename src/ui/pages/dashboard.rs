@@ -1,6 +1,5 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use thaw::{MessageBar, MessageBarBody, MessageBarIntent, MessageBarLayout, Tab, TabList};
 
 mod auth;
 mod notice;
@@ -16,6 +15,7 @@ use crate::config::model::{
 use crate::i18n::{Locale, Msg, t};
 use crate::ui::api;
 use crate::ui::components::confirm_dialog::ConfirmDialog;
+use crate::ui::components::notice::{Notice, NoticeTone};
 use crate::ui::components::status_badge::StatusBadge;
 use crate::ui::components::toolbar::Toolbar;
 use crate::ui::pages::backups::BackupsPanel;
@@ -28,7 +28,10 @@ use crate::ui::tables::{EditableRow, editable_rows, row_values};
 
 use self::auth::{AuthGate, AuthMode, is_unauthorized};
 use self::notice::NoticeMessage;
-use self::tabs::{TAB_ADDRESS, TAB_BACKUPS, TAB_CNAME, TAB_HOST_RECORD, TAB_RAW, TAB_SERVER};
+use self::tabs::{
+    DashboardTabPanel, DashboardTabs, TAB_ADDRESS, TAB_BACKUPS, TAB_CNAME, TAB_HOST_RECORD,
+    TAB_RAW, TAB_SERVER,
+};
 
 #[component]
 pub fn dashboard_page() -> impl IntoView {
@@ -391,58 +394,59 @@ pub fn dashboard_page() -> impl IntoView {
 
                 <div class="alerts">
                     <Show when=move || message_visible.get()>
-                        <MessageBar>
-                            <MessageBarBody>{move || message_text.get()}</MessageBarBody>
-                        </MessageBar>
+                        <Notice>{move || message_text.get()}</Notice>
                     </Show>
 
                     <Show when=move || warnings.with(|warnings| !warnings.is_empty())>
-                        <MessageBar intent=MessageBarIntent::Warning layout=MessageBarLayout::Multiline>
-                            <MessageBarBody>
+                        <Notice tone=NoticeTone::Warning multiline=true>
                             <For
                                 each=move || warnings.get()
                                 key=|issue| issue.message.clone()
                                 children=|issue| view! { <div>{issue.message}</div> }
                             />
-                            </MessageBarBody>
-                        </MessageBar>
+                        </Notice>
                     </Show>
                 </div>
 
-                <TabList class="tabs" selected_value=active_tab>
-                    <Tab value=TAB_ADDRESS>{move || t(locale.get(), Msg::Address)}</Tab>
-                    <Tab value=TAB_HOST_RECORD>{move || t(locale.get(), Msg::HostRecord)}</Tab>
-                    <Tab value=TAB_CNAME>{move || t(locale.get(), Msg::Cname)}</Tab>
-                    <Tab value=TAB_SERVER>{move || t(locale.get(), Msg::Server)}</Tab>
-                    <Tab value=TAB_RAW>{move || t(locale.get(), Msg::RawConfig)}</Tab>
-                    <Tab value=TAB_BACKUPS>{move || t(locale.get(), Msg::Backups)}</Tab>
-                </TabList>
+                <DashboardTabs active_tab=active_tab locale=locale.into() />
 
                 <main class="content">
-                    <Show when=move || active_tab.with(|tab| tab == TAB_ADDRESS)>
-                        <AddressTable records=address locale=locale.into() />
-                    </Show>
-                    <Show when=move || active_tab.with(|tab| tab == TAB_HOST_RECORD)>
-                        <HostRecordTable records=host_record locale=locale.into() />
-                    </Show>
-                    <Show when=move || active_tab.with(|tab| tab == TAB_CNAME)>
-                        <CnameTable records=cname locale=locale.into() />
-                    </Show>
-                    <Show when=move || active_tab.with(|tab| tab == TAB_SERVER)>
-                        <ServerTable records=server locale=locale.into() />
-                    </Show>
-                    <Show when=move || active_tab.with(|tab| tab == TAB_RAW)>
-                        <RawEditorPanel content=raw_content on_test=move |_| test_raw() locale=locale.into() />
-                    </Show>
-                    <Show when=move || active_tab.with(|tab| tab == TAB_BACKUPS)>
-                        <BackupsPanel
-                            backups=backups.into()
-                            on_refresh=move |_| refresh_backups()
-                            on_restore=move |id| restore_backup(id)
-                            on_delete=move |id| request_delete_backup(id)
-                            locale=locale.into()
-                        />
-                    </Show>
+                    <DashboardTabPanel value=TAB_ADDRESS active_tab=active_tab.into()>
+                        <Show when=move || active_tab.with(|tab| tab == TAB_ADDRESS)>
+                            <AddressTable records=address locale=locale.into() />
+                        </Show>
+                    </DashboardTabPanel>
+                    <DashboardTabPanel value=TAB_HOST_RECORD active_tab=active_tab.into()>
+                        <Show when=move || active_tab.with(|tab| tab == TAB_HOST_RECORD)>
+                            <HostRecordTable records=host_record locale=locale.into() />
+                        </Show>
+                    </DashboardTabPanel>
+                    <DashboardTabPanel value=TAB_CNAME active_tab=active_tab.into()>
+                        <Show when=move || active_tab.with(|tab| tab == TAB_CNAME)>
+                            <CnameTable records=cname locale=locale.into() />
+                        </Show>
+                    </DashboardTabPanel>
+                    <DashboardTabPanel value=TAB_SERVER active_tab=active_tab.into()>
+                        <Show when=move || active_tab.with(|tab| tab == TAB_SERVER)>
+                            <ServerTable records=server locale=locale.into() />
+                        </Show>
+                    </DashboardTabPanel>
+                    <DashboardTabPanel value=TAB_RAW active_tab=active_tab.into()>
+                        <Show when=move || active_tab.with(|tab| tab == TAB_RAW)>
+                            <RawEditorPanel content=raw_content on_test=move |_| test_raw() locale=locale.into() />
+                        </Show>
+                    </DashboardTabPanel>
+                    <DashboardTabPanel value=TAB_BACKUPS active_tab=active_tab.into()>
+                        <Show when=move || active_tab.with(|tab| tab == TAB_BACKUPS)>
+                            <BackupsPanel
+                                backups=backups.into()
+                                on_refresh=move |_| refresh_backups()
+                                on_restore=move |id| restore_backup(id)
+                                on_delete=move |id| request_delete_backup(id)
+                                locale=locale.into()
+                            />
+                        </Show>
+                    </DashboardTabPanel>
                 </main>
 
                 <ConfirmDialog

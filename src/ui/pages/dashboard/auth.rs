@@ -1,10 +1,9 @@
 use leptos::prelude::*;
-use thaw::{
-    Button, ButtonAppearance, ButtonType, Field, Input, InputType, MessageBar, MessageBarBody,
-    MessageBarIntent, MessageBarLayout,
-};
 
 use crate::i18n::{Locale, Msg, t};
+use crate::ui::components::button::{Button, ButtonType, ButtonVariant};
+use crate::ui::components::form_controls::{Field, Input, InputType};
+use crate::ui::components::notice::{Notice, NoticeTone};
 use crate::ui::text::localized;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,7 +33,7 @@ pub(super) fn auth_gate(
         <div class="auth-shell">
             <div class="auth-head">
                 <h1>"dnsmasq-web"</h1>
-                <Button button_type=ButtonType::Button on_click=move |_| on_toggle_locale.run(())>
+                <Button on_click=move |_| on_toggle_locale.run(())>
                     {move || t(locale.get(), Msg::LocaleSwitch)}
                 </Button>
             </div>
@@ -59,7 +58,7 @@ pub(super) fn auth_gate(
                         />
                     </Field>
                     <Button
-                        appearance=ButtonAppearance::Primary
+                        variant=ButtonVariant::Primary
                         button_type=ButtonType::Submit
                         disabled=busy
                     >
@@ -71,9 +70,9 @@ pub(super) fn auth_gate(
                     </Button>
                 </Show>
                 <Show when=move || message_visible.get()>
-                    <MessageBar intent=MessageBarIntent::Error layout=MessageBarLayout::Multiline>
-                        <MessageBarBody>{move || message_text.get()}</MessageBarBody>
-                    </MessageBar>
+                    <Notice tone=NoticeTone::Error multiline=true>
+                        {move || message_text.get()}
+                    </Notice>
                 </Show>
             </form>
         </div>
