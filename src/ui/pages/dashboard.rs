@@ -37,6 +37,7 @@ use self::tabs::{
 pub fn dashboard_page() -> impl IntoView {
     let auth_mode = RwSignal::new(AuthMode::Loading);
     let password = RwSignal::new(String::new());
+    let password_confirmation = RwSignal::new(String::new());
     let locale = RwSignal::new(Locale::default());
     let active_tab = RwSignal::new(String::from(TAB_ADDRESS));
     let busy = RwSignal::new(false);
@@ -83,6 +84,7 @@ pub fn dashboard_page() -> impl IntoView {
 
     let clear_auth_form = move || {
         password.set(String::new());
+        password_confirmation.set(String::new());
     };
 
     let handle_error = move |error: String| {
@@ -176,13 +178,21 @@ pub fn dashboard_page() -> impl IntoView {
     };
 
     let submit_auth = move || {
-        busy.set(true);
         message.set(None);
         let password_value = password.get();
         let mode = auth_mode.get_untracked();
+        let password_confirmation_value = password_confirmation.get();
+        if mode == AuthMode::Setup && password_value != password_confirmation_value {
+            message.set(Some(NoticeMessage::Localized(Msg::PasswordsDoNotMatch)));
+            return;
+        }
+
+        busy.set(true);
         spawn_local(async move {
             let response = match mode {
-                AuthMode::Setup => api::setup_password(password_value).await,
+                AuthMode::Setup => {
+                    api::setup_password(password_value, password_confirmation_value).await
+                }
                 AuthMode::Login => api::login(password_value).await,
                 _ => {
                     busy.set(false);
@@ -192,7 +202,7 @@ pub fn dashboard_page() -> impl IntoView {
 
             match response {
                 Ok(_) => {
-                    password.set(String::new());
+                    clear_auth_form();
                     auth_mode.set(AuthMode::Authenticated);
                     load_all();
                 }
@@ -365,6 +375,7 @@ pub fn dashboard_page() -> impl IntoView {
                     <AuthGate
                         mode=auth_mode.into()
                         password=password
+                        password_confirmation=password_confirmation
                         busy=busy.into()
                         message_visible=message_visible
                         message_text=message_text

@@ -15,8 +15,11 @@ pub async fn set_locale(locale: Locale) -> Result<(), String> {
         .map_err(server_fn_error)
 }
 
-pub async fn setup_password(password: String) -> Result<AuthResponse, String> {
-    server_fns::setup_password(password)
+pub async fn setup_password(
+    password: String,
+    password_confirmation: String,
+) -> Result<AuthResponse, String> {
+    server_fns::setup_password(password, password_confirmation)
         .await
         .map_err(server_fn_error)
 }

@@ -15,7 +15,14 @@ pub const SESSION_COOKIE: &str = "dnsmasqweb_session";
 pub async fn configure_password(
     state: &AppState,
     password: String,
+    password_confirmation: String,
 ) -> Result<CreatedSession, AppError> {
+    if password != password_confirmation {
+        return Err(AppError::InvalidConfig(String::from(
+            "passwords do not match",
+        )));
+    }
+
     let password = normalize_password(password)?;
     let password_hash = task::spawn_blocking(move || hash(password, DEFAULT_COST))
         .await
@@ -114,7 +121,7 @@ mod tests {
     async fn setup_hashes_password_and_creates_session() {
         let state = state();
 
-        let response = configure_password(&state, String::from("secret"))
+        let response = configure_password(&state, String::from("secret"), String::from("secret"))
             .await
             .expect("password setup should succeed");
 
@@ -125,7 +132,7 @@ mod tests {
     #[tokio::test]
     async fn login_rejects_wrong_password_and_accepts_correct_password() {
         let state = state();
-        configure_password(&state, String::from("secret"))
+        configure_password(&state, String::from("secret"), String::from("secret"))
             .await
             .expect("password setup should succeed");
 
@@ -139,7 +146,7 @@ mod tests {
     #[tokio::test]
     async fn logout_removes_session() {
         let state = state();
-        let response = configure_password(&state, String::from("secret"))
+        let response = configure_password(&state, String::from("secret"), String::from("secret"))
             .await
             .expect("password setup should succeed");
 
@@ -160,5 +167,19 @@ mod tests {
         }
 
         assert!(!state.verify_session("expired").await);
+    }
+
+    #[tokio::test]
+    async fn setup_rejects_mismatched_passwords() {
+        let state = state();
+
+        let result =
+            configure_password(&state, String::from("secret"), String::from("different")).await;
+
+        assert!(matches!(
+            result,
+            Err(crate::error::AppError::InvalidConfig(_))
+        ));
+        assert!(!state.is_password_configured().await);
     }
 }

@@ -44,9 +44,12 @@ pub async fn set_locale(locale: Locale) -> Result<(), ServerFnError> {
 }
 
 #[server(SetupPassword, "/api")]
-pub async fn setup_password(password: String) -> Result<AuthResponse, ServerFnError> {
+pub async fn setup_password(
+    password: String,
+    password_confirmation: String,
+) -> Result<AuthResponse, ServerFnError> {
     let state = app_state()?;
-    let session = services::setup_password(&state, password)
+    let session = services::setup_password(&state, password, password_confirmation)
         .await
         .map_err(server_error)?;
     set_session_cookie(&session.token)?;

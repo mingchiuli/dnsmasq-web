@@ -35,8 +35,12 @@ pub async fn auth_status(
     }
 }
 
-pub async fn setup_password(state: &AppState, password: String) -> AppResult<CreatedSession> {
-    auth::configure_password(state, password).await
+pub async fn setup_password(
+    state: &AppState,
+    password: String,
+    password_confirmation: String,
+) -> AppResult<CreatedSession> {
+    auth::configure_password(state, password, password_confirmation).await
 }
 
 pub async fn login(state: &AppState, password: String) -> AppResult<CreatedSession> {

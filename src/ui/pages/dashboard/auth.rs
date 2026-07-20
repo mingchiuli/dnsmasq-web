@@ -22,6 +22,7 @@ pub(super) fn is_unauthorized(error: &str) -> bool {
 pub(super) fn auth_gate(
     mode: Signal<AuthMode>,
     password: RwSignal<String>,
+    password_confirmation: RwSignal<String>,
     busy: Signal<bool>,
     message_visible: Signal<bool>,
     message_text: Signal<String>,
@@ -50,13 +51,33 @@ pub(super) fn auth_gate(
                     AuthMode::Loading | AuthMode::Authenticated => t(locale.get(), Msg::Loading),
                 }}</h2>
                 <Show when=move || mode.get() != AuthMode::Loading>
-                    <Field label=localized(locale, Msg::Password)>
-                        <Input
-                            value=password
-                            input_type=InputType::Password
-                            autocomplete="current-password"
-                        />
-                    </Field>
+                    <Show
+                        when=move || mode.get() == AuthMode::Setup
+                        fallback=move || view! {
+                            <Field label=localized(locale, Msg::Password)>
+                                <Input
+                                    value=password
+                                    input_type=InputType::Password
+                                    autocomplete="current-password"
+                                />
+                            </Field>
+                        }
+                    >
+                        <Field label=localized(locale, Msg::Password)>
+                            <Input
+                                value=password
+                                input_type=InputType::Password
+                                autocomplete="new-password"
+                            />
+                        </Field>
+                        <Field label=localized(locale, Msg::ConfirmPassword)>
+                            <Input
+                                value=password_confirmation
+                                input_type=InputType::Password
+                                autocomplete="new-password"
+                            />
+                        </Field>
+                    </Show>
                     <Button
                         variant=ButtonVariant::Primary
                         button_type=ButtonType::Submit
