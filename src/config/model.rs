@@ -60,14 +60,22 @@ pub enum ManagedRecord {
 pub enum ConfigLine {
     Blank(String),
     Comment(String),
+    ManagedBlockBegin(String),
+    ManagedBlockEnd(String),
     Managed(ManagedRecord),
     RawDirective(String),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ManagedBlock {
+    pub begin: usize,
+    pub end: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ParsedConfig {
     pub lines: Vec<ConfigLine>,
-    pub has_managed_block: bool,
+    pub managed_block: Option<ManagedBlock>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -17,8 +17,14 @@ pub fn render_config(config: &ParsedConfig) -> String {
 
 pub fn render_records_block(records: DnsRecords) -> Vec<ConfigLine> {
     let mut lines = Vec::new();
-    lines.push(ConfigLine::Comment(MANAGED_BEGIN.into()));
+    lines.push(ConfigLine::ManagedBlockBegin(MANAGED_BEGIN.into()));
+    lines.extend(render_managed_records(records));
+    lines.push(ConfigLine::ManagedBlockEnd(MANAGED_END.into()));
+    lines
+}
 
+pub fn render_managed_records(records: DnsRecords) -> Vec<ConfigLine> {
+    let mut lines = Vec::new();
     for record in records.address {
         lines.push(ConfigLine::Managed(ManagedRecord::Address(record)));
     }
@@ -32,15 +38,16 @@ pub fn render_records_block(records: DnsRecords) -> Vec<ConfigLine> {
         lines.push(ConfigLine::Managed(ManagedRecord::Server(record)));
     }
 
-    lines.push(ConfigLine::Comment(MANAGED_END.into()));
     lines
 }
 
 pub fn render_line(line: &ConfigLine) -> String {
     match line {
-        ConfigLine::Blank(value) | ConfigLine::Comment(value) | ConfigLine::RawDirective(value) => {
-            value.clone()
-        }
+        ConfigLine::Blank(value)
+        | ConfigLine::Comment(value)
+        | ConfigLine::ManagedBlockBegin(value)
+        | ConfigLine::ManagedBlockEnd(value)
+        | ConfigLine::RawDirective(value) => value.clone(),
         ConfigLine::Managed(record) => render_managed_record(record),
     }
 }

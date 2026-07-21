@@ -23,6 +23,13 @@ struct Cli {
     )]
     backup_dir: PathBuf,
 
+    #[arg(
+        long,
+        env = "DNSMASQWEB_CREDENTIALS_FILE",
+        default_value = "/var/lib/dnsmasqweb/password.hash"
+    )]
+    credentials_file: PathBuf,
+
     #[arg(long, env = "DNSMASQWEB_LISTEN", default_value = "127.0.0.1:8080")]
     listen: SocketAddr,
 
@@ -47,9 +54,13 @@ async fn main() -> anyhow::Result<()> {
         leptos_options,
         cli.config,
         cli.backup_dir,
+        cli.credentials_file,
         cli.dnsmasq_bin,
         cli.service,
     );
+    auth::load_persisted_password(&state)
+        .await
+        .context("load persisted admin password")?;
     tokio::spawn(auth::cleanup_expired_sessions(state.clone()));
 
     let app = routes::router(state);

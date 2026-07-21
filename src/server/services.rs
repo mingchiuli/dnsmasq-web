@@ -3,35 +3,56 @@ use tokio::fs;
 use tracing::{error, info, warn};
 
 use crate::api_types::{
-    AuthStatusResponse, BackupInfo, CommandReport, ConfigResponse, RawConfigResponse,
-    RestoreBackupResponse, SaveResponse, ServiceStatus,
+    AuthStatusResponse, BackupInfo, BootstrapResponse, CommandReport, ConfigResponse,
+    DashboardBootstrap, RawConfigResponse, RestoreBackupResponse, SaveResponse, ServiceStatus,
 };
-use crate::config::model::{ConfigLine, DnsRecords, ValidationLevel};
+use crate::config::model::{DnsRecords, ValidationLevel};
 use crate::config::parser::parse_config;
-use crate::config::records::{collect_records_from_config, replace_managed_records};
+use crate::config::records::{
+    collect_records_from_config, managed_record_count, replace_managed_records,
+};
 use crate::config::render::render_config;
 use crate::config::validate::{has_errors, validate_records};
 use crate::error::{AppError, AppResult};
 use crate::i18n::Locale;
 use crate::server::auth;
+use crate::server::auth::RequestAuth;
 use crate::server::config_apply::{self, ConfigApplyRequest, ConfigApplyResult};
 use crate::server::state::{AppState, CreatedSession};
 use crate::storage::backup;
 
-pub async fn auth_status(
-    state: &AppState,
-    token: Option<&str>,
-    locale: Locale,
-) -> AuthStatusResponse {
-    let authenticated = match token {
-        Some(token) => state.verify_session(token).await,
-        None => false,
-    };
-
+pub async fn auth_status(request_auth: &RequestAuth, locale: Locale) -> AuthStatusResponse {
     AuthStatusResponse {
-        configured: state.is_password_configured().await,
-        authenticated,
+        configured: request_auth.configured,
+        authenticated: request_auth.authenticated,
         locale,
+    }
+}
+
+pub async fn bootstrap(
+    state: &AppState,
+    request_auth: &RequestAuth,
+    locale: Locale,
+) -> BootstrapResponse {
+    if !request_auth.configured {
+        return BootstrapResponse::Setup { locale };
+    }
+    if !request_auth.authenticated {
+        return BootstrapResponse::Login { locale };
+    }
+
+    let (config, raw, backups) = tokio::join!(
+        get_config(state),
+        get_raw_config(state),
+        list_backups(state)
+    );
+    BootstrapResponse::Authenticated {
+        locale,
+        dashboard: Box::new(DashboardBootstrap {
+            config: config.map_err(|error| error.to_string()),
+            raw: raw.map_err(|error| error.to_string()),
+            backups: backups.map_err(|error| error.to_string()),
+        }),
     }
 }
 
@@ -45,6 +66,21 @@ pub async fn setup_password(
 
 pub async fn login(state: &AppState, password: String) -> AppResult<CreatedSession> {
     auth::login(state, password).await
+}
+
+pub async fn change_password(
+    state: &AppState,
+    current_password: String,
+    new_password: String,
+    new_password_confirmation: String,
+) -> AppResult<CreatedSession> {
+    auth::change_password(
+        state,
+        current_password,
+        new_password,
+        new_password_confirmation,
+    )
+    .await
 }
 
 pub async fn logout(state: &AppState, token: Option<&str>) {
@@ -63,11 +99,7 @@ pub async fn get_config(state: &AppState) -> AppResult<ConfigResponse> {
     let last_modified = metadata
         .and_then(|metadata| metadata.modified().ok())
         .map(DateTime::<Utc>::from);
-    let unmanaged_line_count = parsed
-        .lines
-        .iter()
-        .filter(|line| !matches!(line, ConfigLine::Managed(_)))
-        .count();
+    let unmanaged_line_count = parsed.lines.len() - managed_record_count(&parsed);
 
     Ok(ConfigResponse {
         records,

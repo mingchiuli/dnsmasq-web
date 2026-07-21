@@ -57,9 +57,10 @@ where
     T: ConfigTester + ?Sized,
     R: ServiceRestarter + ?Sized,
 {
-    let test = test_content(request.config_file, request.content, tester).await?;
-    let backup = backup::create_backup(request.config_file, request.backup_dir).await?;
-    atomic_write::replace(request.config_file, request.content).await?;
+    let config_file = atomic_write::resolve_target(request.config_file).await?;
+    let test = test_content(&config_file, request.content, tester).await?;
+    let backup = backup::create_backup(&config_file, request.backup_dir).await?;
+    atomic_write::replace(&config_file, request.content).await?;
 
     let reload = if request.apply {
         match restarter.restart().await {
@@ -71,14 +72,9 @@ where
                     backup = %backup.path,
                     "dnsmasq restart failed after config replacement; rolling back"
                 );
-                let rollback = rollback_config(
-                    request.config_file,
-                    request.backup_dir,
-                    &backup,
-                    tester,
-                    restarter,
-                )
-                .await;
+                let rollback =
+                    rollback_config(&config_file, request.backup_dir, &backup, tester, restarter)
+                        .await;
                 log_rollback_status(request.source, &backup, &rollback);
                 return Err(AppError::ConfigApplyFailed {
                     reload_error: Box::new(reload_error),
@@ -204,6 +200,7 @@ fn log_rollback_status(source: &'static str, backup: &BackupInfo, rollback: &Rol
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
+    use std::os::unix::fs::symlink;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -276,6 +273,49 @@ mod tests {
         assert_eq!(paths.read_config().await, "address=/new.example/10.0.0.2\n");
         assert_eq!(restarter.calls(), 0);
         assert_eq!(tester.calls(), 1);
+        paths.cleanup();
+    }
+
+    #[tokio::test]
+    async fn apply_through_symlink_preserves_link_and_backs_up_target() {
+        let paths = TestPaths::new("symlink-target");
+        let real_config = paths.root.join("dnsmasq.real.conf");
+        fs::write(&real_config, "address=/old.example/10.0.0.1\n")
+            .await
+            .expect("write real config");
+        symlink(&real_config, &paths.config_file).expect("create config symlink");
+        let tester = FakeTester::default();
+        let restarter = FakeRestarter::new(Vec::new());
+
+        let result = apply_config(
+            ConfigApplyRequest {
+                config_file: &paths.config_file,
+                backup_dir: &paths.backup_dir,
+                content: "address=/new.example/10.0.0.2\n",
+                apply: false,
+                source: "test",
+            },
+            &tester,
+            &restarter,
+        )
+        .await
+        .expect("apply through symlink");
+
+        assert!(
+            fs::symlink_metadata(&paths.config_file)
+                .await
+                .expect("symlink metadata")
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(
+            fs::read_to_string(&real_config).await.unwrap(),
+            "address=/new.example/10.0.0.2\n"
+        );
+        assert_eq!(
+            fs::read_to_string(&result.backup.path).await.unwrap(),
+            "address=/old.example/10.0.0.1\n"
+        );
         paths.cleanup();
     }
 

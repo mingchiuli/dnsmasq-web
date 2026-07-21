@@ -22,6 +22,7 @@ pub struct AppStateInner {
     pub dnsmasq: DnsmasqCommand,
     pub systemd: Systemd,
     pub auth: RwLock<AuthState>,
+    pub auth_operations: Mutex<()>,
     pub config_operations: Mutex<()>,
 }
 
@@ -48,16 +49,18 @@ impl AppState {
         leptos_options: LeptosOptions,
         config_file: PathBuf,
         backup_dir: PathBuf,
+        credentials_file: PathBuf,
         dnsmasq_bin: String,
         service_name: String,
     ) -> Self {
         Self {
             inner: Arc::new(AppStateInner {
                 leptos_options,
-                paths: StoragePaths::new(config_file, backup_dir),
+                paths: StoragePaths::new(config_file, backup_dir, credentials_file),
                 dnsmasq: DnsmasqCommand::new(dnsmasq_bin),
                 systemd: Systemd::new(service_name),
                 auth: RwLock::new(AuthState::default()),
+                auth_operations: Mutex::new(()),
                 config_operations: Mutex::new(()),
             }),
         }

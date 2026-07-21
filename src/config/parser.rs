@@ -1,19 +1,45 @@
 use crate::config::model::{
-    AddressRecord, CnameRecord, ConfigLine, HostRecord, MANAGED_BEGIN, MANAGED_END, ManagedRecord,
-    ParsedConfig, ServerRecord,
+    AddressRecord, CnameRecord, ConfigLine, HostRecord, MANAGED_BEGIN, MANAGED_END, ManagedBlock,
+    ManagedRecord, ParsedConfig, ServerRecord,
 };
 use crate::error::{AppError, AppResult};
 
 pub fn parse_config(input: &str) -> AppResult<ParsedConfig> {
     let mut lines = Vec::new();
-    let mut has_managed_block = false;
+    let mut open_block = None::<(usize, usize)>;
+    let mut managed_block = None;
 
     for (idx, raw_line) in input.lines().enumerate() {
         let line = raw_line.trim();
 
-        if line == MANAGED_BEGIN || line == MANAGED_END {
-            has_managed_block = true;
-            lines.push(ConfigLine::Comment(raw_line.into()));
+        if line == MANAGED_BEGIN {
+            if open_block.is_some() {
+                return Err(AppError::ParseLine {
+                    line: idx + 1,
+                    message: String::from("managed records block cannot be nested"),
+                });
+            }
+            if managed_block.is_some() {
+                return Err(AppError::ParseLine {
+                    line: idx + 1,
+                    message: String::from("multiple managed records blocks are not allowed"),
+                });
+            }
+            open_block = Some((lines.len(), idx + 1));
+            lines.push(ConfigLine::ManagedBlockBegin(raw_line.into()));
+            continue;
+        }
+
+        if line == MANAGED_END {
+            let Some((begin, _)) = open_block.take() else {
+                return Err(AppError::ParseLine {
+                    line: idx + 1,
+                    message: String::from("managed records block has an unexpected end marker"),
+                });
+            };
+            let end = lines.len();
+            lines.push(ConfigLine::ManagedBlockEnd(raw_line.into()));
+            managed_block = Some(ManagedBlock { begin, end });
             continue;
         }
 
@@ -33,9 +59,16 @@ pub fn parse_config(input: &str) -> AppResult<ParsedConfig> {
         }
     }
 
+    if let Some((_, line)) = open_block {
+        return Err(AppError::ParseLine {
+            line,
+            message: String::from("managed records block is missing end marker"),
+        });
+    }
+
     Ok(ParsedConfig {
         lines,
-        has_managed_block,
+        managed_block,
     })
 }
 

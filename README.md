@@ -10,6 +10,11 @@ Small Rust web UI for managing a limited dnsmasq static DNS surface:
 Unknown directives, comments, and blank lines are preserved. They can still be
 edited from the raw config editor.
 
+The optional `dnsmasqweb managed records` block is parsed as a single explicit
+BEGIN/END region. Comments, blank lines, and unknown directives inside that
+region are preserved when structured records are saved. Unmatched, nested, or
+duplicate managed blocks are rejected instead of being rewritten ambiguously.
+
 ## Scope
 
 This project is intended for small deployments where dnsmasq runs directly on
@@ -50,6 +55,7 @@ to override the asset directory.
 ./dnsmasqweb \
   --config /etc/dnsmasq.conf \
   --backup-dir /var/backups/dnsmasqweb \
+  --credentials-file /var/lib/dnsmasqweb/password.hash \
   --listen 127.0.0.1:8080
 ```
 
@@ -58,6 +64,7 @@ Options can also be set with environment variables:
 ```text
 DNSMASQWEB_CONFIG
 DNSMASQWEB_BACKUP_DIR
+DNSMASQWEB_CREDENTIALS_FILE
 DNSMASQWEB_LISTEN
 DNSMASQWEB_DNSMASQ_BIN
 DNSMASQWEB_SERVICE
@@ -65,15 +72,17 @@ DNSMASQWEB_SERVICE
 
 For production, bind to `127.0.0.1` or a private/VPN address.
 
-On first browser access after startup, set the admin password in the UI. The
-password hash and session tokens are kept in server memory. The browser receives
-the session token in a `HttpOnly` `SameSite=Lax` cookie, which expires after 24
-hours and becomes invalid after the service restarts.
+On first browser access, set the admin password in the UI. The bcrypt password
+hash is stored in `DNSMASQWEB_CREDENTIALS_FILE` using file mode `0600`; session
+tokens remain in server memory. The browser receives the session token in a
+`HttpOnly` `SameSite=Lax` cookie, which expires after 24 hours and becomes invalid
+after the service restarts. The persisted password continues to apply after a
+restart.
 
 ## Permissions
 
 The process needs permission to write the dnsmasq config file, create backups,
-and run:
+create and update the credentials file, and run:
 
 ```text
 /usr/sbin/dnsmasq --test --conf-file=...
@@ -82,6 +91,11 @@ systemctl restart dnsmasq
 ```
 
 Use `--dnsmasq-bin` and `--service` if your paths or service name differ.
+
+The config path must resolve to a regular file. Symbolic links are supported and
+remain in place; the linked file is replaced atomically. Config replacement
+preserves Unix mode, owner, group, and extended attributes, synchronizes the
+temporary file and parent directory, and cleans up temporary files on failure.
 
 ## Systemd
 
@@ -94,6 +108,7 @@ After=network.target
 ExecStart=/usr/local/bin/dnsmasqweb \
   --config /etc/dnsmasq.conf \
   --backup-dir /var/backups/dnsmasqweb \
+  --credentials-file /var/lib/dnsmasqweb/password.hash \
   --listen 127.0.0.1:8080
 Restart=always
 

@@ -1,12 +1,17 @@
 use crate::api_types::{
-    AuthResponse, AuthStatusResponse, BackupInfo, CommandReport, ConfigResponse, RawConfigResponse,
-    RestoreBackupResponse, SaveRawRequest, SaveRecordsRequest, SaveResponse, TestConfigRequest,
+    AuthResponse, AuthStatusResponse, BackupInfo, BootstrapResponse, CommandReport, ConfigResponse,
+    RawConfigResponse, RestoreBackupResponse, SaveRawRequest, SaveRecordsRequest, SaveResponse,
+    TestConfigRequest,
 };
 use crate::i18n::Locale;
 use crate::server_fns;
 
 pub async fn auth_status() -> Result<AuthStatusResponse, String> {
     server_fns::auth_status().await.map_err(server_fn_error)
+}
+
+pub async fn bootstrap() -> Result<BootstrapResponse, String> {
+    server_fns::bootstrap().await.map_err(server_fn_error)
 }
 
 pub async fn set_locale(locale: Locale) -> Result<(), String> {
@@ -26,6 +31,16 @@ pub async fn setup_password(
 
 pub async fn login(password: String) -> Result<AuthResponse, String> {
     server_fns::login(password).await.map_err(server_fn_error)
+}
+
+pub async fn change_password(
+    current_password: String,
+    new_password: String,
+    new_password_confirmation: String,
+) -> Result<AuthResponse, String> {
+    server_fns::change_password(current_password, new_password, new_password_confirmation)
+        .await
+        .map_err(server_fn_error)
 }
 
 pub async fn logout() -> Result<(), String> {

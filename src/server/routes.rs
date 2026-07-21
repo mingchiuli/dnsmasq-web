@@ -13,13 +13,14 @@ use tower_http::trace::{DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, T
 use tracing::Level;
 
 use crate::app::{App, Shell, ShellProps};
-use crate::server::auth::SESSION_COOKIE;
+use crate::server::auth::{RequestAuth, SESSION_COOKIE};
 use crate::server::handlers;
 use crate::server::state::AppState;
-use crate::server_fns::{AuthStatus, Login, Logout, SetLocale, SetupPassword};
+use crate::server_fns::{AuthStatus, Bootstrap, Login, Logout, SetLocale, SetupPassword};
 
 const PUBLIC_SERVER_FN_PATHS: &[&str] = &[
     AuthStatus::PATH,
+    Bootstrap::PATH,
     SetLocale::PATH,
     SetupPassword::PATH,
     Login::PATH,
@@ -57,11 +58,12 @@ pub fn router(state: AppState) -> Router {
 
     Router::new()
         .leptos_routes_with_handler(routes, route_handler)
-        .merge(
-            server_fn_router
-                .route_layer(middleware::from_fn_with_state(state.clone(), require_auth)),
-        )
+        .merge(server_fn_router.route_layer(middleware::from_fn(require_auth)))
         .fallback(handlers::site_assets)
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            resolve_request_auth,
+        ))
         .layer(
             TraceLayer::new_for_http()
                 .on_request(DefaultOnRequest::new().level(Level::DEBUG))
@@ -80,17 +82,16 @@ async fn server_fn_handler(State(state): State<AppState>, req: Request) -> Respo
     .into_response()
 }
 
-async fn require_auth(State(state): State<AppState>, req: Request<Body>, next: Next) -> Response {
+async fn require_auth(req: Request<Body>, next: Next) -> Response {
     let path = req.uri().path();
     if PUBLIC_SERVER_FN_PATHS.contains(&path) {
         return next.run(req).await;
     }
 
-    let authorized = if let Some(token) = request_cookie(&req, SESSION_COOKIE) {
-        state.verify_session(&token).await
-    } else {
-        false
-    };
+    let authorized = req
+        .extensions()
+        .get::<RequestAuth>()
+        .is_some_and(|auth| auth.authenticated);
 
     if authorized {
         next.run(req).await
@@ -102,6 +103,17 @@ async fn require_auth(State(state): State<AppState>, req: Request<Body>, next: N
         )
             .into_response()
     }
+}
+
+async fn resolve_request_auth(
+    State(state): State<AppState>,
+    mut req: Request<Body>,
+    next: Next,
+) -> Response {
+    let token = request_cookie(&req, SESSION_COOKIE);
+    let request_auth = crate::server::auth::resolve_request_auth(&state, token).await;
+    req.extensions_mut().insert(request_auth);
+    next.run(req).await
 }
 
 fn request_cookie(req: &Request<Body>, cookie_name: &str) -> Option<String> {

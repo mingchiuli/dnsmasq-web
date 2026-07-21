@@ -4,13 +4,19 @@ use std::path::{Path, PathBuf};
 pub struct StoragePaths {
     pub config_file: PathBuf,
     pub backup_dir: PathBuf,
+    pub credentials_file: PathBuf,
 }
 
 impl StoragePaths {
-    pub fn new(config_file: impl Into<PathBuf>, backup_dir: impl Into<PathBuf>) -> Self {
+    pub fn new(
+        config_file: impl Into<PathBuf>,
+        backup_dir: impl Into<PathBuf>,
+        credentials_file: impl Into<PathBuf>,
+    ) -> Self {
         Self {
             config_file: config_file.into(),
             backup_dir: backup_dir.into(),
+            credentials_file: credentials_file.into(),
         }
     }
 

@@ -10,8 +10,8 @@ use axum::http::{HeaderName, HeaderValue};
 use leptos_axum::ResponseOptions;
 
 use crate::api_types::{
-    AuthResponse, AuthStatusResponse, BackupInfo, CommandReport, ConfigResponse, RawConfigResponse,
-    RestoreBackupResponse, SaveResponse, ServiceStatus,
+    AuthResponse, AuthStatusResponse, BackupInfo, BootstrapResponse, CommandReport, ConfigResponse,
+    RawConfigResponse, RestoreBackupResponse, SaveResponse, ServiceStatus,
 };
 use crate::config::model::DnsRecords;
 #[cfg(feature = "ssr")]
@@ -28,13 +28,13 @@ use crate::server::state::AppState;
 const LOCALE_COOKIE: &str = "dnsmasqweb_locale";
 #[server(AuthStatus, "/api")]
 pub async fn auth_status() -> Result<AuthStatusResponse, ServerFnError> {
+    Ok(services::auth_status(&request_auth()?, request_locale()).await)
+}
+
+#[server(Bootstrap, "/api")]
+pub async fn bootstrap() -> Result<BootstrapResponse, ServerFnError> {
     let state = app_state()?;
-    Ok(services::auth_status(
-        &state,
-        request_cookie(SESSION_COOKIE).as_deref(),
-        request_locale(),
-    )
-    .await)
+    Ok(services::bootstrap(&state, &request_auth()?, request_locale()).await)
 }
 
 #[server(SetLocale, "/api")]
@@ -70,10 +70,31 @@ pub async fn login(password: String) -> Result<AuthResponse, ServerFnError> {
     })
 }
 
+#[server(ChangePassword, "/api")]
+pub async fn change_password(
+    current_password: String,
+    new_password: String,
+    new_password_confirmation: String,
+) -> Result<AuthResponse, ServerFnError> {
+    let state = app_state()?;
+    let session = services::change_password(
+        &state,
+        current_password,
+        new_password,
+        new_password_confirmation,
+    )
+    .await
+    .map_err(server_error)?;
+    set_session_cookie(&session.token)?;
+    Ok(AuthResponse {
+        expires_at: session.expires_at,
+    })
+}
+
 #[server(Logout, "/api")]
 pub async fn logout() -> Result<(), ServerFnError> {
     let state = app_state()?;
-    let token = request_cookie(SESSION_COOKIE);
+    let token = request_auth()?.token;
     services::logout(&state, token.as_deref()).await;
     clear_session_cookie()?;
     Ok(())
@@ -153,6 +174,17 @@ pub async fn delete_backup(id: String) -> Result<(), ServerFnError> {
 fn app_state() -> Result<AppState, ServerFnError> {
     use_context::<AppState>()
         .ok_or_else(|| ServerFnError::ServerError(String::from("missing app state")))
+}
+
+#[cfg(feature = "ssr")]
+fn request_auth() -> Result<crate::server::auth::RequestAuth, ServerFnError> {
+    let parts = use_context::<Parts>()
+        .ok_or_else(|| ServerFnError::new(String::from("missing request context")))?;
+    parts
+        .extensions
+        .get::<crate::server::auth::RequestAuth>()
+        .cloned()
+        .ok_or_else(|| ServerFnError::new(String::from("missing request auth")))
 }
 
 #[cfg(feature = "ssr")]

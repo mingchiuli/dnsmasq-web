@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use leptos_router::SsrMode;
 use leptos_router::components::{Route, Router, Routes};
 use leptos_router::path;
 
@@ -9,7 +10,7 @@ pub fn app() -> impl IntoView {
     view! {
         <Router>
             <Routes fallback=DashboardPage>
-                <Route path=path!("") view=DashboardPage />
+                <Route path=path!("") view=DashboardPage ssr=SsrMode::Async />
             </Routes>
         </Router>
     }

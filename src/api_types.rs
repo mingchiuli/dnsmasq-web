@@ -17,6 +17,27 @@ pub struct AuthResponse {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum BootstrapResponse {
+    Setup {
+        locale: Locale,
+    },
+    Login {
+        locale: Locale,
+    },
+    Authenticated {
+        locale: Locale,
+        dashboard: Box<DashboardBootstrap>,
+    },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DashboardBootstrap {
+    pub config: Result<ConfigResponse, String>,
+    pub raw: Result<RawConfigResponse, String>,
+    pub backups: Result<Vec<BackupInfo>, String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ConfigResponse {
     pub records: DnsRecords,
     pub unmanaged_line_count: usize,

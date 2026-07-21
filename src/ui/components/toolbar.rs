@@ -9,6 +9,7 @@ pub fn toolbar(
     #[prop(into)] on_refresh: Callback<()>,
     #[prop(into)] on_save: Callback<()>,
     #[prop(into)] on_apply: Callback<()>,
+    #[prop(into)] on_change_password: Callback<()>,
     #[prop(into)] on_logout: Callback<()>,
     busy: Signal<bool>,
     locale: Signal<Locale>,
@@ -22,6 +23,9 @@ pub fn toolbar(
             <div class="toolbar-actions">
                 <Button on_click=move |_| on_toggle_locale.run(())>
                     {move || t(locale.get(), Msg::LocaleSwitch)}
+                </Button>
+                <Button on_click=move |_| on_change_password.run(())>
+                    {move || t(locale.get(), Msg::ChangePassword)}
                 </Button>
                 <Button on_click=move |_| on_refresh.run(()) disabled=busy>
                     {move || t(locale.get(), Msg::Refresh)}
