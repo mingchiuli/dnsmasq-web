@@ -1,13 +1,18 @@
 use crate::config::model::{
-    AddressRecord, CnameRecord, ConfigLine, HostRecord, MANAGED_BEGIN, MANAGED_END, ManagedBlock,
-    ManagedRecord, ParsedConfig, ServerRecord,
+    AddressRecord, CnameRecord, ConfigLine, DnsRecords, HostRecord, MANAGED_BEGIN, MANAGED_END,
+    ManagedBlock, ManagedRecord, ParsedConfig, ServerRecord,
 };
+use crate::config::validate::{has_errors, validate_records};
 use crate::error::{AppError, AppResult};
 
 pub fn parse_config(input: &str) -> AppResult<ParsedConfig> {
     let mut lines = Vec::new();
     let mut open_block = None::<(usize, usize)>;
     let mut managed_block = None;
+    let legacy_mode = !input.lines().any(|raw_line| {
+        let line = raw_line.trim();
+        line == MANAGED_BEGIN || line == MANAGED_END
+    });
 
     for (idx, raw_line) in input.lines().enumerate() {
         let line = raw_line.trim();
@@ -47,11 +52,9 @@ pub fn parse_config(input: &str) -> AppResult<ParsedConfig> {
             lines.push(ConfigLine::Blank(raw_line.into()));
         } else if line.starts_with('#') {
             lines.push(ConfigLine::Comment(raw_line.into()));
-        } else if let Some(record) =
-            parse_managed_line(line).map_err(|message| AppError::ParseLine {
-                line: idx + 1,
-                message,
-            })?
+        } else if let Some(record) = (legacy_mode || open_block.is_some())
+            .then(|| parse_managed_line(line))
+            .flatten()
         {
             lines.push(ConfigLine::Managed(record));
         } else {
@@ -77,24 +80,31 @@ pub fn parse_records(input: &str) -> AppResult<crate::config::model::DnsRecords>
     Ok(crate::config::records::collect_records_from_config(&parsed))
 }
 
-fn parse_managed_line(line: &str) -> Result<Option<ManagedRecord>, String> {
-    if let Some(value) = line.strip_prefix("address=") {
-        return parse_address(value).map(|record| Some(ManagedRecord::Address(record)));
-    }
+fn parse_managed_line(line: &str) -> Option<ManagedRecord> {
+    let record = if let Some(value) = line.strip_prefix("address=") {
+        parse_address(value).ok().map(ManagedRecord::Address)
+    } else if let Some(value) = line.strip_prefix("host-record=") {
+        parse_host_record(value).ok().map(ManagedRecord::HostRecord)
+    } else if let Some(value) = line.strip_prefix("cname=") {
+        parse_cname(value).ok().map(ManagedRecord::Cname)
+    } else if let Some(value) = line.strip_prefix("server=") {
+        parse_server(value).ok().map(ManagedRecord::Server)
+    } else {
+        None
+    }?;
 
-    if let Some(value) = line.strip_prefix("host-record=") {
-        return parse_host_record(value).map(|record| Some(ManagedRecord::HostRecord(record)));
-    }
+    is_supported_record(&record).then_some(record)
+}
 
-    if let Some(value) = line.strip_prefix("cname=") {
-        return parse_cname(value).map(|record| Some(ManagedRecord::Cname(record)));
+fn is_supported_record(record: &ManagedRecord) -> bool {
+    let mut records = DnsRecords::default();
+    match record {
+        ManagedRecord::Address(record) => records.address.push(record.clone()),
+        ManagedRecord::HostRecord(record) => records.host_record.push(record.clone()),
+        ManagedRecord::Cname(record) => records.cname.push(record.clone()),
+        ManagedRecord::Server(record) => records.server.push(record.clone()),
     }
-
-    if let Some(value) = line.strip_prefix("server=") {
-        return parse_server(value).map(|record| Some(ManagedRecord::Server(record)));
-    }
-
-    Ok(None)
+    !has_errors(&validate_records(&records))
 }
 
 fn parse_address(value: &str) -> Result<AddressRecord, String> {
@@ -117,6 +127,9 @@ fn parse_host_record(value: &str) -> Result<HostRecord, String> {
     let items = split_csv(value);
     if items.len() < 2 {
         return Err(String::from("expected host-record=name,ip[,ip...]"));
+    }
+    if items.last().is_some_and(|item| item.parse::<u32>().is_ok()) {
+        return Err(String::from("host-record TTL is not managed"));
     }
 
     let mut names = Vec::new();

@@ -136,6 +136,48 @@ fn replace_records_preserves_managed_directives_outside_the_block() {
 }
 
 #[test]
+fn managed_block_leaves_advanced_same_name_directives_opaque() {
+    let input = format!(
+        "server=/example.com/internal.example.com/10.0.0.1#5353@eth0\ncname=one.example.com,two.example.com,target.example.com,300\n{MANAGED_BEGIN}\naddress=/inside.example.internal/10.10.0.2\n{MANAGED_END}\n"
+    );
+    let parsed = parse_config(&input).expect("parse advanced raw directives");
+    let records = collect_records_from_config(&parsed);
+
+    assert_eq!(records.address.len(), 1);
+    assert!(records.server.is_empty());
+    assert!(records.cname.is_empty());
+
+    let rendered = render_config(
+        &replace_managed_records(&parsed, records).expect("replace managed block records"),
+    );
+    assert!(rendered.contains("server=/example.com/internal.example.com/10.0.0.1#5353@eth0"));
+    assert!(rendered.contains("cname=one.example.com,two.example.com,target.example.com,300"));
+}
+
+#[test]
+fn legacy_migration_preserves_unsupported_same_name_directives() {
+    let input = "address=/simple.example.internal/10.10.0.1\naddress=/#/10.0.0.2\nhost-record=host.example.internal,10.0.0.3,300\ncname=one.example.com,two.example.com,target.example.com,300\nserver=/example.com/10.0.0.1@eth0\n";
+    let parsed = parse_config(input).expect("parse legacy config");
+    let records = collect_records_from_config(&parsed);
+
+    assert_eq!(records.address.len(), 1);
+    assert!(records.host_record.is_empty());
+    assert!(records.cname.is_empty());
+    assert!(records.server.is_empty());
+
+    let rendered = render_config(
+        &replace_managed_records(&parsed, records).expect("migrate supported legacy records"),
+    );
+    assert!(rendered.contains("address=/simple.example.internal/10.10.0.1"));
+    assert!(rendered.contains("address=/#/10.0.0.2"));
+    assert!(rendered.contains("host-record=host.example.internal,10.0.0.3,300"));
+    assert!(rendered.contains("cname=one.example.com,two.example.com,target.example.com,300"));
+    assert!(rendered.contains("server=/example.com/10.0.0.1@eth0"));
+    assert!(rendered.contains(MANAGED_BEGIN));
+    assert!(rendered.contains(MANAGED_END));
+}
+
+#[test]
 fn parser_rejects_invalid_managed_block_structure() {
     let unexpected_end = parse_config(&format!("{MANAGED_END}\n")).expect_err("unexpected end");
     assert!(unexpected_end.to_string().contains("unexpected end marker"));
