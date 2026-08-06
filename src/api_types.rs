@@ -40,6 +40,7 @@ pub struct DashboardBootstrap {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ConfigResponse {
     pub records: DnsRecords,
+    pub revision: ConfigRevision,
     pub unmanaged_line_count: usize,
     pub warnings: Vec<ValidationIssue>,
     pub last_modified: Option<DateTime<Utc>>,
@@ -50,12 +51,24 @@ pub struct ConfigResponse {
 pub struct SaveRecordsRequest {
     pub records: DnsRecords,
     pub apply: bool,
+    pub revision: ConfigRevision,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SaveRawRequest {
     pub content: String,
     pub apply: bool,
+    pub revision: ConfigRevision,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ConfigRevision(pub String);
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SaveOutcome {
+    Saved(Box<SaveResponse>),
+    Conflict,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -70,6 +83,7 @@ pub struct SaveResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RawConfigResponse {
     pub content: String,
+    pub revision: ConfigRevision,
     pub last_modified: Option<DateTime<Utc>>,
 }
 

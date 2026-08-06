@@ -1,5 +1,7 @@
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::extract::FromRef;
 use chrono::{DateTime, Utc};
@@ -9,6 +11,7 @@ use tokio::sync::{Mutex, RwLock};
 use crate::dnsmasq::command::DnsmasqCommand;
 use crate::dnsmasq::systemd::Systemd;
 use crate::server::auth::new_session;
+use crate::server::rate_limit::LoginRateLimiter;
 use crate::storage::paths::StoragePaths;
 
 #[derive(Clone)]
@@ -21,6 +24,8 @@ pub struct AppStateInner {
     pub paths: StoragePaths,
     pub dnsmasq: DnsmasqCommand,
     pub systemd: Systemd,
+    pub max_backups: Option<NonZeroUsize>,
+    pub login_rate_limiter: LoginRateLimiter,
     pub auth: RwLock<AuthState>,
     pub auth_operations: Mutex<()>,
     pub config_operations: Mutex<()>,
@@ -44,6 +49,23 @@ pub struct CreatedSession {
     pub expires_at: DateTime<Utc>,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct RuntimeSettings {
+    pub dnsmasq_test_timeout: Duration,
+    pub systemctl_timeout: Duration,
+    pub max_backups: Option<NonZeroUsize>,
+}
+
+impl Default for RuntimeSettings {
+    fn default() -> Self {
+        Self {
+            dnsmasq_test_timeout: Duration::from_secs(10),
+            systemctl_timeout: Duration::from_secs(30),
+            max_backups: NonZeroUsize::new(50),
+        }
+    }
+}
+
 impl AppState {
     pub fn new(
         leptos_options: LeptosOptions,
@@ -52,13 +74,16 @@ impl AppState {
         credentials_file: PathBuf,
         dnsmasq_bin: String,
         service_name: String,
+        settings: RuntimeSettings,
     ) -> Self {
         Self {
             inner: Arc::new(AppStateInner {
                 leptos_options,
                 paths: StoragePaths::new(config_file, backup_dir, credentials_file),
-                dnsmasq: DnsmasqCommand::new(dnsmasq_bin),
-                systemd: Systemd::new(service_name),
+                dnsmasq: DnsmasqCommand::new(dnsmasq_bin, settings.dnsmasq_test_timeout),
+                systemd: Systemd::new(service_name, settings.systemctl_timeout),
+                max_backups: settings.max_backups,
+                login_rate_limiter: LoginRateLimiter::new(),
                 auth: RwLock::new(AuthState::default()),
                 auth_operations: Mutex::new(()),
                 config_operations: Mutex::new(()),

@@ -1,6 +1,6 @@
 use crate::api_types::{
     AuthResponse, AuthStatusResponse, BackupInfo, BootstrapResponse, CommandReport, ConfigResponse,
-    RawConfigResponse, RestoreBackupResponse, SaveRawRequest, SaveRecordsRequest, SaveResponse,
+    RawConfigResponse, RestoreBackupResponse, SaveOutcome, SaveRawRequest, SaveRecordsRequest,
     TestConfigRequest,
 };
 use crate::i18n::Locale;
@@ -51,8 +51,8 @@ pub async fn get_config() -> Result<ConfigResponse, String> {
     server_fns::get_config().await.map_err(server_fn_error)
 }
 
-pub async fn save_records(payload: SaveRecordsRequest) -> Result<SaveResponse, String> {
-    server_fns::save_records(payload.records, payload.apply)
+pub async fn save_records(payload: SaveRecordsRequest) -> Result<SaveOutcome, String> {
+    server_fns::save_records(payload.records, payload.apply, payload.revision)
         .await
         .map_err(server_fn_error)
 }
@@ -61,8 +61,8 @@ pub async fn get_raw_config() -> Result<RawConfigResponse, String> {
     server_fns::get_raw_config().await.map_err(server_fn_error)
 }
 
-pub async fn save_raw_config(payload: SaveRawRequest) -> Result<SaveResponse, String> {
-    server_fns::save_raw_config(payload.content, payload.apply)
+pub async fn save_raw_config(payload: SaveRawRequest) -> Result<SaveOutcome, String> {
+    server_fns::save_raw_config(payload.content, payload.apply, payload.revision)
         .await
         .map_err(server_fn_error)
 }

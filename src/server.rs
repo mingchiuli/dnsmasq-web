@@ -1,7 +1,9 @@
 pub mod auth;
 pub mod config_apply;
+pub mod config_revision;
 pub mod dto;
 pub mod handlers;
+pub mod rate_limit;
 pub mod routes;
 pub mod services;
 pub mod state;

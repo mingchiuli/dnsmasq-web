@@ -22,6 +22,18 @@ pub enum AppError {
     },
 
     #[cfg(feature = "ssr")]
+    #[error("command timed out after {timeout_seconds}s: {program} {args}")]
+    CommandTimedOut {
+        program: String,
+        args: String,
+        timeout_seconds: u64,
+    },
+
+    #[cfg(feature = "ssr")]
+    #[error("configuration changed since it was loaded")]
+    ConfigConflict,
+
+    #[cfg(feature = "ssr")]
     #[error("dnsmasq restart failed after config replacement: {reload_error}; rollback {rollback}")]
     ConfigApplyFailed {
         reload_error: Box<AppError>,
@@ -35,6 +47,10 @@ pub enum AppError {
     #[cfg(feature = "ssr")]
     #[error("authentication error: {0}")]
     Auth(String),
+
+    #[cfg(feature = "ssr")]
+    #[error("too many login attempts; try again in {retry_after_seconds}s")]
+    RateLimited { retry_after_seconds: u64 },
 }
 
 #[cfg(feature = "ssr")]

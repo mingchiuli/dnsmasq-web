@@ -1,14 +1,16 @@
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::pin::Pin;
 
 use tokio::fs;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
-use crate::api_types::{BackupInfo, CommandReport};
+use crate::api_types::{BackupInfo, CommandReport, ConfigRevision};
 use crate::dnsmasq::command::DnsmasqCommand;
 use crate::dnsmasq::systemd::Systemd;
 use crate::error::{AppError, AppResult, RollbackStatus};
+use crate::server::config_revision;
 use crate::storage::{atomic_write, backup};
 
 pub type CommandFuture<'a> = Pin<Box<dyn Future<Output = AppResult<CommandReport>> + Send + 'a>>;
@@ -39,6 +41,8 @@ pub struct ConfigApplyRequest<'a> {
     pub content: &'a str,
     pub apply: bool,
     pub source: &'static str,
+    pub expected_revision: &'a ConfigRevision,
+    pub max_backups: Option<NonZeroUsize>,
 }
 
 #[derive(Debug)]
@@ -59,6 +63,10 @@ where
 {
     let config_file = atomic_write::resolve_target(request.config_file).await?;
     let test = test_content(&config_file, request.content, tester).await?;
+    let current_content = fs::read_to_string(&config_file).await?;
+    if config_revision::calculate(&current_content) != *request.expected_revision {
+        return Err(AppError::ConfigConflict);
+    }
     let backup = backup::create_backup(&config_file, request.backup_dir).await?;
     atomic_write::replace(&config_file, request.content).await?;
 
@@ -93,6 +101,12 @@ where
         "config saved"
     );
 
+    if let Some(max_backups) = request.max_backups
+        && let Err(error) = backup::prune_backups(request.backup_dir, max_backups).await
+    {
+        warn!(source = request.source, %error, "failed to prune old backups");
+    }
+
     Ok(ConfigApplyResult {
         backup,
         test,
@@ -125,7 +139,7 @@ where
     T: ConfigTester + ?Sized,
     R: ServiceRestarter + ?Sized,
 {
-    let backup_path = match backup::checked_backup_path(backup_dir, &backup.id) {
+    let backup_path = match backup::checked_backup_file(backup_dir, &backup.id).await {
         Ok(path) => path,
         Err(error) => {
             return RollbackStatus::Failed {
@@ -211,6 +225,8 @@ mod tests {
     use super::{CommandFuture, ConfigApplyRequest, ConfigTester, ServiceRestarter, apply_config};
     use crate::api_types::CommandReport;
     use crate::error::{AppError, RollbackStatus};
+    use crate::server::config_revision;
+    use crate::storage::backup;
 
     #[tokio::test]
     async fn restart_failure_rolls_back_to_previous_config() {
@@ -229,6 +245,8 @@ mod tests {
                 content: "address=/new.example/10.0.0.2\n",
                 apply: true,
                 source: "test",
+                expected_revision: &config_revision::calculate("address=/old.example/10.0.0.1\n"),
+                max_backups: None,
             },
             &tester,
             &restarter,
@@ -245,6 +263,13 @@ mod tests {
         assert_eq!(paths.read_config().await, "address=/old.example/10.0.0.1\n");
         assert_eq!(restarter.calls(), 2);
         assert_eq!(tester.calls(), 2);
+        assert_eq!(
+            backup::list_backups(&paths.backup_dir)
+                .await
+                .expect("list rollback backups")
+                .len(),
+            1
+        );
         paths.cleanup();
     }
 
@@ -262,6 +287,8 @@ mod tests {
                 content: "address=/new.example/10.0.0.2\n",
                 apply: false,
                 source: "test",
+                expected_revision: &config_revision::calculate("address=/old.example/10.0.0.1\n"),
+                max_backups: None,
             },
             &tester,
             &restarter,
@@ -294,6 +321,8 @@ mod tests {
                 content: "address=/new.example/10.0.0.2\n",
                 apply: false,
                 source: "test",
+                expected_revision: &config_revision::calculate("address=/old.example/10.0.0.1\n"),
+                max_backups: None,
             },
             &tester,
             &restarter,
@@ -336,6 +365,8 @@ mod tests {
                 content: "address=/new.example/10.0.0.2\n",
                 apply: true,
                 source: "test",
+                expected_revision: &config_revision::calculate("address=/old.example/10.0.0.1\n"),
+                max_backups: None,
             },
             &tester,
             &restarter,
@@ -352,6 +383,39 @@ mod tests {
         assert_eq!(paths.read_config().await, "address=/new.example/10.0.0.2\n");
         assert_eq!(restarter.calls(), 1);
         assert_eq!(tester.calls(), 2);
+        paths.cleanup();
+    }
+
+    #[tokio::test]
+    async fn external_change_during_test_is_not_overwritten() {
+        let paths = TestPaths::new("external-change-during-test");
+        paths.write_config("address=/old.example/10.0.0.1\n").await;
+        let tester = MutatingTester {
+            config_file: paths.config_file.clone(),
+        };
+        let restarter = FakeRestarter::new(Vec::new());
+
+        let result = apply_config(
+            ConfigApplyRequest {
+                config_file: &paths.config_file,
+                backup_dir: &paths.backup_dir,
+                content: "address=/new.example/10.0.0.2\n",
+                apply: false,
+                source: "test",
+                expected_revision: &config_revision::calculate("address=/old.example/10.0.0.1\n"),
+                max_backups: None,
+            },
+            &tester,
+            &restarter,
+        )
+        .await;
+
+        assert!(matches!(result, Err(AppError::ConfigConflict)));
+        assert_eq!(
+            paths.read_config().await,
+            "address=/external.example/10.0.0.3\n"
+        );
+        assert!(!paths.backup_dir.exists());
         paths.cleanup();
     }
 
@@ -383,6 +447,19 @@ mod tests {
                     .await
                     .pop_front()
                     .unwrap_or_else(|| Ok(command_report("test")))
+            })
+        }
+    }
+
+    struct MutatingTester {
+        config_file: PathBuf,
+    }
+
+    impl ConfigTester for MutatingTester {
+        fn test_config<'a>(&'a self, _config_path: &'a Path) -> CommandFuture<'a> {
+            Box::pin(async move {
+                fs::write(&self.config_file, "address=/external.example/10.0.0.3\n").await?;
+                Ok(command_report("test"))
             })
         }
     }

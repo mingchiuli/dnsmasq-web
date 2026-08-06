@@ -102,7 +102,7 @@ impl DashboardController {
             Err(error) => errors.push(error),
         }
         match dashboard.raw {
-            Ok(response) => self.workspace.raw_content.set(response.content),
+            Ok(response) => self.workspace.apply_raw(response),
             Err(error) => errors.push(error),
         }
         match dashboard.backups {

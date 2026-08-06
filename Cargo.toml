@@ -17,6 +17,7 @@ ssr = [
     "dep:leptos_axum",
     "dep:leptos_router",
     "dep:mime_guess",
+    "dep:sha2",
     "dep:tokio",
     "dep:tower-http",
     "dep:tracing-subscriber",
@@ -25,9 +26,9 @@ ssr = [
     "leptos/ssr",
     "leptos_router/ssr",
 ]
+embedded-assets = ["ssr", "dep:rust-embed"]
 hydrate = [
     "dep:console_error_panic_hook",
-    "dep:js-sys",
     "dep:leptos",
     "dep:leptos_router",
     "dep:wasm-bindgen",
@@ -49,11 +50,12 @@ axum = { version = "0.8.9", optional = true }
 bcrypt = { version = "0.19", optional = true }
 clap = { version = "4", features = ["derive", "env"], optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
-js-sys = { version = "0.3", optional = true }
 leptos_axum = { version = "0.8.6", optional = true }
 mime_guess = { version = "2", optional = true }
+rust-embed = { version = "8", optional = true }
+sha2 = { version = "0.10", optional = true }
 tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "sync", "time"], optional = true }
-tower-http = { version = "0.7", features = ["trace"], optional = true }
+tower-http = { version = "0.7", features = ["limit", "trace"], optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 
 [dependencies.wasm-bindgen]

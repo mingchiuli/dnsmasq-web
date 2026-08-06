@@ -192,7 +192,7 @@ mod tests {
     use chrono::Utc;
 
     use super::{change_password, configure_password, load_persisted_password, login, logout};
-    use crate::server::state::{AppState, AuthSession};
+    use crate::server::state::{AppState, AuthSession, RuntimeSettings};
 
     struct TestState {
         app: AppState,
@@ -238,6 +238,7 @@ mod tests {
             root.join("state/password.hash"),
             String::from("dnsmasq"),
             String::from("dnsmasq"),
+            RuntimeSettings::default(),
         )
     }
 

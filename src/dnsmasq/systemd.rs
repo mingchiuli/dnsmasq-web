@@ -1,19 +1,20 @@
-use std::process::Stdio;
-
-use tokio::process::Command;
+use std::time::Duration;
 
 use crate::api_types::{CommandReport, ServiceStatus};
+use crate::dnsmasq::process;
 use crate::error::{AppError, AppResult};
 
 #[derive(Clone, Debug)]
 pub struct Systemd {
     service: String,
+    timeout: Duration,
 }
 
 impl Systemd {
-    pub fn new(service: impl Into<String>) -> Self {
+    pub fn new(service: impl Into<String>, timeout: Duration) -> Self {
         Self {
             service: service.into(),
+            timeout,
         }
     }
 
@@ -22,25 +23,26 @@ impl Systemd {
     }
 
     pub async fn status(&self) -> ServiceStatus {
-        match Command::new("systemctl")
-            .arg("is-active")
-            .arg(&self.service)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-        {
-            Ok(output) => {
-                let stdout: String = String::from_utf8_lossy(&output.stdout).trim().into();
+        match self.run_systemctl(&["is-active", &self.service]).await {
+            Ok(report) => {
+                let stdout = report.stdout.trim().to_string();
                 ServiceStatus {
-                    active: output.status.success() && stdout == "active",
+                    active: stdout == "active",
                     description: if stdout.is_empty() {
-                        String::from_utf8_lossy(&output.stderr).trim().into()
+                        report.stderr.trim().into()
                     } else {
                         stdout
                     },
                 }
             }
+            Err(AppError::CommandFailed { stdout, stderr, .. }) => ServiceStatus {
+                active: false,
+                description: if stdout.trim().is_empty() {
+                    stderr.trim().into()
+                } else {
+                    stdout.trim().into()
+                },
+            },
             Err(error) => ServiceStatus {
                 active: false,
                 description: error.to_string(),
@@ -49,29 +51,6 @@ impl Systemd {
     }
 
     async fn run_systemctl(&self, args: &[&str]) -> AppResult<CommandReport> {
-        let output = Command::new("systemctl")
-            .args(args)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await?;
-
-        let report = CommandReport {
-            success: output.status.success(),
-            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-        };
-
-        if report.success {
-            Ok(report)
-        } else {
-            Err(AppError::CommandFailed {
-                program: String::from("systemctl"),
-                args: args.join(" "),
-                status: output.status.to_string(),
-                stdout: report.stdout,
-                stderr: report.stderr,
-            })
-        }
+        process::run("systemctl", args, self.timeout).await
     }
 }

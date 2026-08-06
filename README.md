@@ -45,9 +45,21 @@ The release binary is:
 target/release/dnsmasqweb
 ```
 
-At runtime, the server serves frontend assets from `site/` next to the binary
-when present, or from `target/site` during local builds. Set `LEPTOS_SITE_ROOT`
-to override the asset directory.
+Normal local builds serve frontend assets from `site/` next to the binary when
+present, or from `target/site`. Set `LEPTOS_SITE_ROOT` to override the asset
+directory.
+
+Official release binaries include the generated frontend assets and do not need
+a separate `site/` directory. They still check the configured site directory
+first, so an existing `LEPTOS_SITE_ROOT` can override an embedded asset. To build
+the same standalone binary locally, generate the frontend first and then enable
+`embedded-assets`:
+
+```bash
+cargo leptos build --release --frontend-only
+LEPTOS_OUTPUT_NAME=dnsmasqweb cargo build --release --bin dnsmasqweb \
+  --no-default-features --features ssr,embedded-assets
+```
 
 ## Run
 
@@ -68,7 +80,16 @@ DNSMASQWEB_CREDENTIALS_FILE
 DNSMASQWEB_LISTEN
 DNSMASQWEB_DNSMASQ_BIN
 DNSMASQWEB_SERVICE
+DNSMASQWEB_DNSMASQ_TEST_TIMEOUT_SECS
+DNSMASQWEB_SYSTEMCTL_TIMEOUT_SECS
+DNSMASQWEB_MAX_BACKUPS
 ```
+
+dnsmasq validation commands time out after 10 seconds by default; systemctl
+status and restart commands time out after 30 seconds. Up to 50 backups are kept
+after a successful save or restore. Set `DNSMASQWEB_MAX_BACKUPS=0` to keep all
+backups. Failed transactions retain their rollback backup, and a cleanup failure
+does not turn a successful config update into a failed one.
 
 For production, bind to `127.0.0.1` or a private/VPN address.
 
@@ -79,6 +100,10 @@ tokens remain in server memory. The browser receives the session token in a
 after the service restarts. The persisted password continues to apply after a
 restart.
 
+Login is limited per peer IP to 10 attempts in each 60-second window, and a
+successful login resets that peer's window. Server function request bodies are
+limited to 2 MiB.
+
 ## Permissions
 
 The process needs permission to write the dnsmasq config file, create backups,
@@ -86,7 +111,7 @@ create and update the credentials file, and run:
 
 ```text
 /usr/sbin/dnsmasq --test --conf-file=...
-systemctl reload dnsmasq
+systemctl is-active dnsmasq
 systemctl restart dnsmasq
 ```
 
@@ -96,6 +121,13 @@ The config path must resolve to a regular file. Symbolic links are supported and
 remain in place; the linked file is replaced atomically. Config replacement
 preserves Unix mode, owner, group, and extended attributes, synchronizes the
 temporary file and parent directory, and cleans up temporary files on failure.
+Backups are created as private regular files in a `0700` directory; backup
+symbolic links and non-regular files are rejected.
+
+Each editor load includes a content revision. Saving is rejected if the config
+changed after it was loaded, including changes made while the dnsmasq validation
+command was running. The editor keeps unsaved input so it can be reviewed before
+refreshing.
 
 ## Systemd
 

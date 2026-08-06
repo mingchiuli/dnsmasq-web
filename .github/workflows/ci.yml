@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: clippy,rustfmt
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-leptos
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-leptos@0.3.6
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Check server
+        run: cargo check --bin dnsmasqweb --no-default-features --features ssr
+
+      - name: Check frontend
+        run: cargo check --lib --target wasm32-unknown-unknown --no-default-features --features hydrate
+
+      - name: Test server
+        run: cargo test --tests --no-default-features --features ssr
+
+      - name: Lint server
+        run: cargo clippy --all-targets --no-default-features --features ssr -- -D warnings
+
+      - name: Lint frontend
+        run: cargo clippy --lib --target wasm32-unknown-unknown --no-default-features --features hydrate -- -D warnings
+
+      - name: Build application
+        run: cargo leptos build --release
+
+      - name: Build embedded release binary
+        env:
+          LEPTOS_OUTPUT_NAME: dnsmasqweb
+        run: cargo build --release --bin dnsmasqweb --no-default-features --features ssr,embedded-assets

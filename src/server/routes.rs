@@ -9,7 +9,10 @@ use axum::routing::{delete, get, patch, post, put};
 use leptos::context::provide_context;
 use leptos::server_fn::ServerFn;
 use leptos_axum::{LeptosRoutes, generate_route_list, render_route_with_context};
-use tower_http::trace::{DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer};
+use tower_http::{
+    limit::RequestBodyLimitLayer,
+    trace::{DefaultMakeSpan, DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer},
+};
 use tracing::Level;
 
 use crate::app::{App, Shell, ShellProps};
@@ -26,6 +29,7 @@ const PUBLIC_SERVER_FN_PATHS: &[&str] = &[
     Login::PATH,
     Logout::PATH,
 ];
+const SERVER_FN_BODY_LIMIT: usize = 2 * 1024 * 1024;
 
 pub fn router(state: AppState) -> Router {
     let leptos_options = state.inner.leptos_options.clone();
@@ -58,7 +62,11 @@ pub fn router(state: AppState) -> Router {
 
     Router::new()
         .leptos_routes_with_handler(routes, route_handler)
-        .merge(server_fn_router.route_layer(middleware::from_fn(require_auth)))
+        .merge(
+            server_fn_router
+                .route_layer(middleware::from_fn(require_auth))
+                .layer(RequestBodyLimitLayer::new(SERVER_FN_BODY_LIMIT)),
+        )
         .fallback(handlers::site_assets)
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -66,6 +74,7 @@ pub fn router(state: AppState) -> Router {
         ))
         .layer(
             TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().include_headers(false))
                 .on_request(DefaultOnRequest::new().level(Level::DEBUG))
                 .on_response(DefaultOnResponse::new().level(Level::DEBUG))
                 .on_failure(DefaultOnFailure::new().level(Level::WARN)),

@@ -1,6 +1,5 @@
+use chrono::{DateTime, Utc};
 use leptos::prelude::*;
-#[cfg(feature = "hydrate")]
-use wasm_bindgen::JsValue;
 
 use crate::api_types::BackupInfo;
 use crate::i18n::{Locale, Msg, t};
@@ -37,17 +36,17 @@ pub fn backups_panel(
                             each=move || backups.get()
                             key=|backup| backup.id.clone()
                             children=move |backup| {
+                                let created_at = format_utc_time(&backup.created_at);
                                 let backup_id = backup.id;
                                 let path = backup.path;
                                 let size = backup.size;
                                 let restore_id = backup_id.clone();
                                 let delete_id = backup_id.clone();
-                                let local_time = format_local_time(&backup.created_at.to_rfc3339(), locale.get_untracked());
                                 view! {
                                     <tr>
                                         <td>
                                             <div class="stacked-cell">
-                                                <strong>{local_time}</strong>
+                                                <strong>{created_at}</strong>
                                                 <span>{backup_id}</span>
                                             </div>
                                         </td>
@@ -82,26 +81,22 @@ pub fn backups_panel(
     }
 }
 
-fn format_local_time(value: &str, locale: Locale) -> String {
-    #[cfg(feature = "hydrate")]
-    {
-        format_browser_local_time(value, locale)
-    }
-
-    #[cfg(not(feature = "hydrate"))]
-    {
-        let _ = locale;
-        value.into()
-    }
+fn format_utc_time(value: &DateTime<Utc>) -> String {
+    value.format("%Y-%m-%d %H:%M:%S UTC").to_string()
 }
 
-#[cfg(feature = "hydrate")]
-fn format_browser_local_time(value: &str, locale: Locale) -> String {
-    let date = js_sys::Date::new(&JsValue::from_str(value));
-    if date.get_time().is_nan() {
-        return value.into();
+#[cfg(test)]
+mod tests {
+    use chrono::{DateTime, Utc};
+
+    use super::format_utc_time;
+
+    #[test]
+    fn formats_backup_time_as_utc() {
+        let created_at = DateTime::parse_from_rfc3339("2026-08-06T20:34:56+08:00")
+            .expect("valid timestamp")
+            .with_timezone(&Utc);
+
+        assert_eq!(format_utc_time(&created_at), "2026-08-06 12:34:56 UTC");
     }
-    date.to_locale_string(locale.code(), &JsValue::UNDEFINED)
-        .as_string()
-        .unwrap_or_else(|| value.into())
 }

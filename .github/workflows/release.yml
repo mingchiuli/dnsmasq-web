@@ -49,7 +49,7 @@ jobs:
       - name: Build binary
         env:
           LEPTOS_OUTPUT_NAME: dnsmasqweb
-        run: cargo build --release --bin dnsmasqweb --no-default-features --features ssr --target ${{ matrix.target }}
+        run: cargo build --release --bin dnsmasqweb --no-default-features --features ssr,embedded-assets --target ${{ matrix.target }}
 
       - name: Package
         shell: bash
@@ -58,7 +58,6 @@ jobs:
           name="dnsmasqweb-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir -p "pkg/$name"
           cp "target/${{ matrix.target }}/release/dnsmasqweb" "pkg/$name/"
-          cp -R target/site "pkg/$name/site"
           cp README.md LICENSE "pkg/$name/"
           tar -C pkg -czf "$name.tar.gz" "$name"
           echo "ASSET=$name.tar.gz" >> "$GITHUB_ENV"

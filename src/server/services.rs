@@ -1,12 +1,15 @@
+use std::net::IpAddr;
+
 use chrono::{DateTime, Utc};
 use tokio::fs;
 use tracing::{error, info, warn};
 
 use crate::api_types::{
     AuthStatusResponse, BackupInfo, BootstrapResponse, CommandReport, ConfigResponse,
-    DashboardBootstrap, RawConfigResponse, RestoreBackupResponse, SaveResponse, ServiceStatus,
+    ConfigRevision, DashboardBootstrap, RawConfigResponse, RestoreBackupResponse, SaveResponse,
+    ServiceStatus,
 };
-use crate::config::model::{DnsRecords, ValidationLevel};
+use crate::config::model::{DnsRecords, ParsedConfig, ValidationLevel};
 use crate::config::parser::parse_config;
 use crate::config::records::{
     collect_records_from_config, managed_record_count, replace_managed_records,
@@ -18,6 +21,7 @@ use crate::i18n::Locale;
 use crate::server::auth;
 use crate::server::auth::RequestAuth;
 use crate::server::config_apply::{self, ConfigApplyRequest, ConfigApplyResult};
+use crate::server::config_revision;
 use crate::server::state::{AppState, CreatedSession};
 use crate::storage::backup;
 
@@ -41,16 +45,19 @@ pub async fn bootstrap(
         return BootstrapResponse::Login { locale };
     }
 
-    let (config, raw, backups) = tokio::join!(
-        get_config(state),
-        get_raw_config(state),
-        list_backups(state)
-    );
+    let (config_pair, backups) = tokio::join!(get_dashboard_config(state), list_backups(state));
+    let (config, raw) = match config_pair {
+        Ok((config, raw)) => (Ok(config), Ok(raw)),
+        Err(error) => {
+            let message = error.to_string();
+            (Err(message.clone()), Err(message))
+        }
+    };
     BootstrapResponse::Authenticated {
         locale,
         dashboard: Box::new(DashboardBootstrap {
-            config: config.map_err(|error| error.to_string()),
-            raw: raw.map_err(|error| error.to_string()),
+            config,
+            raw,
             backups: backups.map_err(|error| error.to_string()),
         }),
     }
@@ -64,8 +71,17 @@ pub async fn setup_password(
     auth::configure_password(state, password, password_confirmation).await
 }
 
-pub async fn login(state: &AppState, password: String) -> AppResult<CreatedSession> {
-    auth::login(state, password).await
+pub async fn login(
+    state: &AppState,
+    password: String,
+    peer_ip: Option<IpAddr>,
+) -> AppResult<CreatedSession> {
+    state.inner.login_rate_limiter.check(peer_ip).await?;
+    let result = auth::login(state, password).await;
+    if result.is_ok() {
+        state.inner.login_rate_limiter.reset(peer_ip).await;
+    }
+    result
 }
 
 pub async fn change_password(
@@ -88,32 +104,43 @@ pub async fn logout(state: &AppState, token: Option<&str>) {
 }
 
 pub async fn get_config(state: &AppState) -> AppResult<ConfigResponse> {
-    let content = fs::read_to_string(&state.inner.paths.config_file).await?;
-    let parsed = parse_config(&content)?;
-    let records = collect_records_from_config(&parsed);
+    let snapshot = read_config_snapshot(state).await?;
+    Ok(config_response(
+        &snapshot,
+        state.inner.systemd.status().await,
+    ))
+}
+
+async fn get_dashboard_config(state: &AppState) -> AppResult<(ConfigResponse, RawConfigResponse)> {
+    let snapshot = read_config_snapshot(state).await?;
+    let config = config_response(&snapshot, state.inner.systemd.status().await);
+    let raw = raw_config_response(&snapshot);
+    Ok((config, raw))
+}
+
+fn config_response(snapshot: &ConfigSnapshot, service: ServiceStatus) -> ConfigResponse {
+    let records = collect_records_from_config(&snapshot.parsed);
     let warnings = validate_records(&records)
         .into_iter()
         .filter(|issue| matches!(issue.level, ValidationLevel::Warning))
         .collect();
-    let metadata = fs::metadata(&state.inner.paths.config_file).await.ok();
-    let last_modified = metadata
-        .and_then(|metadata| metadata.modified().ok())
-        .map(DateTime::<Utc>::from);
-    let unmanaged_line_count = parsed.lines.len() - managed_record_count(&parsed);
+    let unmanaged_line_count = snapshot.parsed.lines.len() - managed_record_count(&snapshot.parsed);
 
-    Ok(ConfigResponse {
+    ConfigResponse {
         records,
+        revision: snapshot.revision.clone(),
         unmanaged_line_count,
         warnings,
-        last_modified,
-        service: state.inner.systemd.status().await,
-    })
+        last_modified: snapshot.last_modified,
+        service,
+    }
 }
 
 pub async fn save_records(
     state: &AppState,
     records: DnsRecords,
     apply: bool,
+    expected_revision: ConfigRevision,
 ) -> AppResult<SaveResponse> {
     let issues = validate_records(&records);
     if has_errors(&issues) {
@@ -130,11 +157,12 @@ pub async fn save_records(
     }
 
     let _operation = state.inner.config_operations.lock().await;
-    let content = fs::read_to_string(&state.inner.paths.config_file).await?;
-    let parsed = parse_config(&content)?;
-    let next = replace_managed_records(&parsed, records)?;
+    let (current_content, current_revision) = read_config_content(state).await?;
+    ensure_revision(&current_revision, &expected_revision)?;
+    let current_config = parse_config(&current_content)?;
+    let next = replace_managed_records(&current_config, records)?;
     let rendered = render_config(&next);
-    let result = persist_config(state, &rendered, apply, "structured").await?;
+    let result = persist_config(state, &rendered, apply, "structured", &expected_revision).await?;
 
     Ok(SaveResponse {
         warnings: issues
@@ -146,22 +174,15 @@ pub async fn save_records(
 }
 
 pub async fn get_raw_config(state: &AppState) -> AppResult<RawConfigResponse> {
-    let content = fs::read_to_string(&state.inner.paths.config_file).await?;
-    let metadata = fs::metadata(&state.inner.paths.config_file).await.ok();
-    let last_modified = metadata
-        .and_then(|metadata| metadata.modified().ok())
-        .map(DateTime::<Utc>::from);
-
-    Ok(RawConfigResponse {
-        content,
-        last_modified,
-    })
+    let snapshot = read_config_snapshot(state).await?;
+    Ok(raw_config_response(&snapshot))
 }
 
 pub async fn save_raw_config(
     state: &AppState,
     content: String,
     apply: bool,
+    expected_revision: ConfigRevision,
 ) -> AppResult<SaveResponse> {
     let parsed = parse_config(&content)?;
     let records = collect_records_from_config(&parsed);
@@ -174,7 +195,9 @@ pub async fn save_raw_config(
     }
 
     let _operation = state.inner.config_operations.lock().await;
-    let result = persist_config(state, &content, apply, "raw").await?;
+    let (_, current_revision) = read_config_content(state).await?;
+    ensure_revision(&current_revision, &expected_revision)?;
+    let result = persist_config(state, &content, apply, "raw", &expected_revision).await?;
     Ok(SaveResponse {
         warnings: issues
             .into_iter()
@@ -231,11 +254,12 @@ pub async fn delete_backup(state: &AppState, id: String) -> AppResult<()> {
 
 pub async fn restore_backup(state: &AppState, id: String) -> AppResult<RestoreBackupResponse> {
     info!(backup_id = %id, "backup restore requested");
-    let path = backup::checked_backup_path(&state.inner.paths.backup_dir, &id)?;
-
     let _operation = state.inner.config_operations.lock().await;
+    let path = backup::checked_backup_file(&state.inner.paths.backup_dir, &id).await?;
     let content = fs::read_to_string(&path).await?;
-    let result = apply_config_transaction(state, &content, true, "restore").await?;
+    let (_, current_revision) = read_config_content(state).await?;
+    let result =
+        apply_config_transaction(state, &content, true, "restore", &current_revision).await?;
     info!(
         backup_id = %id,
         rollback_backup = %result.backup.path,
@@ -254,8 +278,9 @@ async fn persist_config(
     content: &str,
     apply: bool,
     source: &'static str,
+    expected_revision: &ConfigRevision,
 ) -> AppResult<SaveResponse> {
-    let result = apply_config_transaction(state, content, apply, source).await?;
+    let result = apply_config_transaction(state, content, apply, source, expected_revision).await?;
 
     Ok(SaveResponse {
         applied: apply,
@@ -271,6 +296,7 @@ async fn apply_config_transaction(
     content: &str,
     apply: bool,
     source: &'static str,
+    expected_revision: &ConfigRevision,
 ) -> AppResult<ConfigApplyResult> {
     match config_apply::apply_config(
         ConfigApplyRequest {
@@ -279,6 +305,8 @@ async fn apply_config_transaction(
             content,
             apply,
             source,
+            expected_revision,
+            max_backups: state.inner.max_backups,
         },
         &state.inner.dnsmasq,
         &state.inner.systemd,
@@ -290,5 +318,51 @@ async fn apply_config_transaction(
             warn!(source, %error, "config replacement failed");
             Err(error)
         }
+    }
+}
+
+struct ConfigSnapshot {
+    content: String,
+    parsed: ParsedConfig,
+    revision: ConfigRevision,
+    last_modified: Option<DateTime<Utc>>,
+}
+
+async fn read_config_snapshot(state: &AppState) -> AppResult<ConfigSnapshot> {
+    let (content, revision) = read_config_content(state).await?;
+    let parsed = parse_config(&content)?;
+    let last_modified = fs::metadata(&state.inner.paths.config_file)
+        .await
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .map(DateTime::<Utc>::from);
+
+    Ok(ConfigSnapshot {
+        content,
+        parsed,
+        revision,
+        last_modified,
+    })
+}
+
+async fn read_config_content(state: &AppState) -> AppResult<(String, ConfigRevision)> {
+    let content = fs::read_to_string(&state.inner.paths.config_file).await?;
+    let revision = config_revision::calculate(&content);
+    Ok((content, revision))
+}
+
+fn raw_config_response(snapshot: &ConfigSnapshot) -> RawConfigResponse {
+    RawConfigResponse {
+        content: snapshot.content.clone(),
+        revision: snapshot.revision.clone(),
+        last_modified: snapshot.last_modified,
+    }
+}
+
+fn ensure_revision(actual: &ConfigRevision, expected: &ConfigRevision) -> AppResult<()> {
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(AppError::ConfigConflict)
     }
 }

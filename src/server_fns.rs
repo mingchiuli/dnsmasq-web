@@ -1,17 +1,19 @@
 use leptos::prelude::*;
 
 #[cfg(feature = "ssr")]
-use axum::http::header::{ACCEPT_LANGUAGE, COOKIE, SET_COOKIE};
+use axum::extract::ConnectInfo;
+#[cfg(feature = "ssr")]
+use axum::http::header::{ACCEPT_LANGUAGE, COOKIE, RETRY_AFTER, SET_COOKIE};
 #[cfg(feature = "ssr")]
 use axum::http::request::Parts;
 #[cfg(feature = "ssr")]
-use axum::http::{HeaderName, HeaderValue};
+use axum::http::{HeaderName, HeaderValue, StatusCode};
 #[cfg(feature = "ssr")]
 use leptos_axum::ResponseOptions;
 
 use crate::api_types::{
     AuthResponse, AuthStatusResponse, BackupInfo, BootstrapResponse, CommandReport, ConfigResponse,
-    RawConfigResponse, RestoreBackupResponse, SaveResponse, ServiceStatus,
+    ConfigRevision, RawConfigResponse, RestoreBackupResponse, SaveOutcome, ServiceStatus,
 };
 use crate::config::model::DnsRecords;
 #[cfg(feature = "ssr")]
@@ -61,7 +63,7 @@ pub async fn setup_password(
 #[server(Login, "/api")]
 pub async fn login(password: String) -> Result<AuthResponse, ServerFnError> {
     let state = app_state()?;
-    let session = services::login(&state, password)
+    let session = services::login(&state, password, request_peer_ip())
         .await
         .map_err(server_error)?;
     set_session_cookie(&session.token)?;
@@ -107,11 +109,13 @@ pub async fn get_config() -> Result<ConfigResponse, ServerFnError> {
 }
 
 #[server(SaveRecords, "/api")]
-pub async fn save_records(records: DnsRecords, apply: bool) -> Result<SaveResponse, ServerFnError> {
+pub async fn save_records(
+    records: DnsRecords,
+    apply: bool,
+    revision: ConfigRevision,
+) -> Result<SaveOutcome, ServerFnError> {
     let state = app_state()?;
-    services::save_records(&state, records, apply)
-        .await
-        .map_err(server_error)
+    save_outcome(services::save_records(&state, records, apply, revision).await)
 }
 
 #[server(GetRawConfig, "/api")]
@@ -121,11 +125,13 @@ pub async fn get_raw_config() -> Result<RawConfigResponse, ServerFnError> {
 }
 
 #[server(SaveRawConfig, "/api")]
-pub async fn save_raw_config(content: String, apply: bool) -> Result<SaveResponse, ServerFnError> {
+pub async fn save_raw_config(
+    content: String,
+    apply: bool,
+    revision: ConfigRevision,
+) -> Result<SaveOutcome, ServerFnError> {
     let state = app_state()?;
-    services::save_raw_config(&state, content, apply)
-        .await
-        .map_err(server_error)
+    save_outcome(services::save_raw_config(&state, content, apply, revision).await)
 }
 
 #[server(TestConfig, "/api")]
@@ -189,7 +195,37 @@ fn request_auth() -> Result<crate::server::auth::RequestAuth, ServerFnError> {
 
 #[cfg(feature = "ssr")]
 fn server_error(error: AppError) -> ServerFnError {
+    if let Some(response) = use_context::<ResponseOptions>() {
+        match &error {
+            AppError::RateLimited {
+                retry_after_seconds,
+            } => {
+                response.set_status(StatusCode::TOO_MANY_REQUESTS);
+                if let Ok(value) = HeaderValue::from_str(&retry_after_seconds.to_string()) {
+                    response.append_header(RETRY_AFTER, value);
+                }
+            }
+            AppError::CommandTimedOut { .. } => {
+                response.set_status(StatusCode::GATEWAY_TIMEOUT);
+            }
+            AppError::ConfigConflict => {
+                response.set_status(StatusCode::CONFLICT);
+            }
+            _ => {}
+        }
+    }
     ServerFnError::ServerError(error.to_string())
+}
+
+#[cfg(feature = "ssr")]
+fn save_outcome(
+    result: Result<crate::api_types::SaveResponse, AppError>,
+) -> Result<SaveOutcome, ServerFnError> {
+    match result {
+        Ok(response) => Ok(SaveOutcome::Saved(Box::new(response))),
+        Err(AppError::ConfigConflict) => Ok(SaveOutcome::Conflict),
+        Err(error) => Err(server_error(error)),
+    }
 }
 
 #[cfg(feature = "ssr")]
@@ -203,6 +239,15 @@ fn request_locale() -> Locale {
                 .map(Locale::from)
                 .unwrap_or_default()
         })
+}
+
+#[cfg(feature = "ssr")]
+fn request_peer_ip() -> Option<std::net::IpAddr> {
+    let parts = use_context::<Parts>()?;
+    parts
+        .extensions
+        .get::<ConnectInfo<std::net::SocketAddr>>()
+        .map(|connection| connection.0.ip())
 }
 
 #[cfg(feature = "ssr")]

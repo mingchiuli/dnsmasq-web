@@ -1,9 +1,11 @@
 use std::net::SocketAddr;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use anyhow::Context;
 use clap::Parser;
-use dnsmasqweb::server::state::AppState;
+use dnsmasqweb::server::state::{AppState, RuntimeSettings};
 use dnsmasqweb::server::{auth, routes};
 use leptos::config::{LeptosOptions, get_configuration};
 use tokio::net::TcpListener;
@@ -42,6 +44,25 @@ struct Cli {
 
     #[arg(long, env = "DNSMASQWEB_SERVICE", default_value = "dnsmasq")]
     service: String,
+
+    #[arg(
+        long,
+        env = "DNSMASQWEB_DNSMASQ_TEST_TIMEOUT_SECS",
+        default_value_t = 10,
+        value_parser = clap::value_parser!(u64).range(1..)
+    )]
+    dnsmasq_test_timeout_secs: u64,
+
+    #[arg(
+        long,
+        env = "DNSMASQWEB_SYSTEMCTL_TIMEOUT_SECS",
+        default_value_t = 30,
+        value_parser = clap::value_parser!(u64).range(1..)
+    )]
+    systemctl_timeout_secs: u64,
+
+    #[arg(long, env = "DNSMASQWEB_MAX_BACKUPS", default_value_t = 50)]
+    max_backups: usize,
 }
 
 #[tokio::main]
@@ -57,6 +78,11 @@ async fn main() -> anyhow::Result<()> {
         cli.credentials_file,
         cli.dnsmasq_bin,
         cli.service,
+        RuntimeSettings {
+            dnsmasq_test_timeout: Duration::from_secs(cli.dnsmasq_test_timeout_secs),
+            systemctl_timeout: Duration::from_secs(cli.systemctl_timeout_secs),
+            max_backups: NonZeroUsize::new(cli.max_backups),
+        },
     );
     auth::load_persisted_password(&state)
         .await
@@ -69,7 +95,11 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("bind {}", cli.listen))?;
 
     info!("listening on http://{}", cli.listen);
-    axum::serve(listener, app).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }
 
