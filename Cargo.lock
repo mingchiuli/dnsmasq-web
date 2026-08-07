@@ -616,7 +616,7 @@ dependencies = [
  "mime_guess",
  "rust-embed",
  "serde",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "thiserror 2.0.19",
  "tokio",
  "tower-http 0.7.0",
