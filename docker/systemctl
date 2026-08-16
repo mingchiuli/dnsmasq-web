@@ -1,0 +1,76 @@
+#!/bin/sh
+# Minimal systemctl replacement for the dnsmasqweb container.
+#
+# systemd is not available inside the container. This shim supports only the
+# dnsmasq service operations the web UI issues, by signalling the dnsmasq
+# process started by the entrypoint. Any other service or action fails with a
+# non-zero exit so the web UI's error handling (including config rollback)
+# behaves as it does on a host with real systemd.
+
+set -u
+
+action="${1:-}"
+service="${2:-}"
+
+if [ "$service" != "dnsmasq" ]; then
+    echo "systemctl: unsupported service '$service'" >&2
+    exit 1
+fi
+
+config_file="${DNSMASQWEB_CONFIG:-/etc/dnsmasq.conf}"
+
+is_running() {
+    pgrep -x dnsmasq >/dev/null 2>&1
+}
+
+start_dnsmasq() {
+    if is_running; then
+        return 0
+    fi
+    if [ ! -f "$config_file" ]; then
+        : > "$config_file"
+    fi
+    /usr/sbin/dnsmasq --keep-in-foreground \
+        --conf-file="$config_file" \
+        --pid-file=/run/dnsmasq.pid &
+    # Give it a moment to bind its sockets and stay up.
+    sleep 1
+    if ! is_running; then
+        echo "systemctl: dnsmasq failed to start" >&2
+        return 1
+    fi
+}
+
+case "$action" in
+    is-active)
+        if is_running; then
+            echo "active"
+            exit 0
+        fi
+        echo "inactive"
+        exit 3
+        ;;
+    start)
+        start_dnsmasq
+        ;;
+    stop)
+        pkill -x dnsmasq || true
+        ;;
+    restart | reload | try-restart | force-reload)
+        if is_running; then
+            # dnsmasq re-reads its configuration on SIGHUP. The web UI validates
+            # the candidate config with `dnsmasq --test` before reloading, so the
+            # running process should always accept the new configuration.
+            pkill -HUP -x dnsmasq || true
+            # If the process disappeared between the check and the signal, bring
+            # it back up.
+            is_running || start_dnsmasq
+        else
+            start_dnsmasq
+        fi
+        ;;
+    *)
+        echo "systemctl: unsupported action '$action'" >&2
+        exit 1
+        ;;
+esac

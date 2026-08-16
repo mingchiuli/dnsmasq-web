@@ -1,0 +1,12 @@
+# Keep the build context small and out of the builder stage.
+target
+dist
+.git
+.github
+.tmp
+.zed
+*.tar.gz
+*.zip
+*.log
+.env
+.env.*

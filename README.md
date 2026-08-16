@@ -61,6 +61,50 @@ LEPTOS_OUTPUT_NAME=dnsmasqweb cargo build --release --bin dnsmasqweb \
   --no-default-features --features ssr,embedded-assets
 ```
 
+## Docker
+
+A `Dockerfile` packages the web UI together with dnsmasq into a single image. The
+standalone binary embeds the frontend assets, so the image needs no separate site
+directory. Inside the container a minimal `systemctl` shim (`docker/systemctl`)
+reloads the bundled dnsmasq process, since systemd is not available.
+
+Build:
+
+```bash
+docker build -t dnsmasqweb .
+```
+
+Run with the config, backups, and credentials persisted on the host. Use host
+networking so dnsmasq can serve DNS directly on the LAN:
+
+```bash
+docker run -d --name dnsmasqweb --network host \
+  -v /etc/dnsmasq.conf:/etc/dnsmasq.conf \
+  -v /var/backups/dnsmasqweb:/var/backups/dnsmasqweb \
+  -v /var/lib/dnsmasqweb:/var/lib/dnsmasqweb \
+  dnsmasqweb
+```
+
+With bridged networking, publish the ports instead:
+
+```bash
+docker run -d --name dnsmasqweb \
+  -p 8080:8080 \
+  -p 53:53/tcp -p 53:53/udp \
+  -v /etc/dnsmasq.conf:/etc/dnsmasq.conf \
+  -v /var/backups/dnsmasqweb:/var/backups/dnsmasqweb \
+  -v /var/lib/dnsmasqweb:/var/lib/dnsmasqweb \
+  dnsmasqweb
+```
+
+The container runs as root so it can replace the config file, keep backups
+(`0700`) and the password hash (`0600`) private, and bind port 53. The web UI
+listens on `0.0.0.0:8080` inside the image; do not publish that port to the
+public internet. Saving a config reloads dnsmasq by re-reading the config
+(`SIGHUP`), which applies the records this UI manages. Settings that can only
+change on a full restart (for example `port=` or `interface=`) take effect when
+the container restarts.
+
 ## Run
 
 ```bash
