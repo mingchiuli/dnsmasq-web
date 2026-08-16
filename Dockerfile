@@ -32,10 +32,11 @@ RUN cargo build --release --bin dnsmasqweb \
 FROM debian:bookworm-slim
 
 # dnsmasq: the daemon itself and the binary used for `dnsmasq --test` validation.
-# procps: pgrep/pkill used by the systemctl shim.
+# procps: pgrep/pkill used by the systemctl shim and the healthcheck.
+# curl: HTTP probe for the healthcheck.
 # tini: init/process reaper so signals reach the foreground processes.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        dnsmasq procps tini ca-certificates \
+        dnsmasq procps curl tini ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/dnsmasqweb /usr/local/bin/dnsmasqweb
@@ -53,3 +54,10 @@ ENV DNSMASQWEB_CONFIG=/etc/dnsmasq.conf \
 EXPOSE 8080 53/tcp 53/udp
 
 ENTRYPOINT ["tini", "--", "/usr/local/bin/entrypoint.sh"]
+
+# Healthy when dnsmasq is running and the web UI answers on the default listen
+# address. GET / renders the setup/login page (HTTP 200) without auth, so it is
+# a safe probe. Unauthenticated pages are served by the Leptos shell.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD pgrep -x dnsmasq >/dev/null || exit 1; \
+        curl -fsS http://127.0.0.1:8080/ >/dev/null || exit 1
