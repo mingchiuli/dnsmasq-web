@@ -105,9 +105,24 @@ public internet. Saving a config reloads dnsmasq by re-reading the config
 change on a full restart (for example `port=` or `interface=`) take effect when
 the container restarts.
 
-The image defines a `HEALTHCHECK`: the container is healthy when dnsmasq is
-running and the web UI answers on `127.0.0.1:8080`. `docker ps` shows the
-health, and Docker Compose/Swarm can use it for restart policies.
+No `HEALTHCHECK` is baked into the image so you can define your own, for example
+in `docker-compose.yml`:
+
+```yaml
+services:
+  dnsmasqweb:
+    image: dnsmasqweb
+    # ...
+    healthcheck:
+      test: ["CMD", "sh", "-c", "pgrep -x dnsmasq >/dev/null && curl -fsS http://127.0.0.1:8080/ >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+```
+
+`curl` is included in the image for this. The container is healthy when dnsmasq
+is running and the web UI answers on the default listen address.
 
 ## Run
 
