@@ -33,9 +33,10 @@ FROM debian:bookworm-slim
 
 # dnsmasq: the daemon itself and the binary used for `dnsmasq --test` validation.
 # procps: pgrep/pkill used by the systemctl shim.
+# curl: HTTP probe for healthchecks users define (e.g. in Docker Compose).
 # tini: init/process reaper so signals reach the foreground processes.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        dnsmasq procps tini ca-certificates \
+        dnsmasq procps curl tini ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/dnsmasqweb /usr/local/bin/dnsmasqweb
