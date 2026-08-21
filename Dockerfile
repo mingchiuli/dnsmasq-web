@@ -7,7 +7,7 @@ FROM rust:1.98-bookworm AS builder
 
 # rust-toolchain.toml is intentionally not copied into the builder so rustup does
 # not install the extra components it lists (clippy, rust-analyzer, rust-src).
-# The rust:1.96-bookworm tag pins the Rust version instead.
+# The rust:1.98-bookworm tag pins the Rust version instead.
 RUN rustup target add wasm32-unknown-unknown
 RUN cargo install cargo-leptos --version 0.3.6 --locked
 
