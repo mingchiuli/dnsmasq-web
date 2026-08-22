@@ -1,7 +1,5 @@
-use std::future::Future;
 use std::num::NonZeroUsize;
 use std::path::Path;
-use std::pin::Pin;
 
 use tokio::fs;
 use tracing::{error, info, warn};
@@ -13,29 +11,27 @@ use crate::error::{AppError, AppResult, RollbackStatus};
 use crate::server::config_revision;
 use crate::storage::{atomic_write, backup};
 
-pub type CommandFuture<'a> = Pin<Box<dyn Future<Output = AppResult<CommandReport>> + Send + 'a>>;
-
-pub trait ConfigTester: Send + Sync {
-    fn test_config<'a>(&'a self, config_path: &'a Path) -> CommandFuture<'a>;
+pub(crate) trait ConfigTester: Send + Sync {
+    async fn test_config(&self, config_path: &Path) -> AppResult<CommandReport>;
 }
 
-pub trait ServiceRestarter: Send + Sync {
-    fn restart(&self) -> CommandFuture<'_>;
+pub(crate) trait ServiceRestarter: Send + Sync {
+    async fn restart(&self) -> AppResult<CommandReport>;
 }
 
 impl ConfigTester for DnsmasqCommand {
-    fn test_config<'a>(&'a self, config_path: &'a Path) -> CommandFuture<'a> {
-        Box::pin(DnsmasqCommand::test_config(self, config_path))
+    async fn test_config(&self, config_path: &Path) -> AppResult<CommandReport> {
+        DnsmasqCommand::test_config(self, config_path).await
     }
 }
 
 impl ServiceRestarter for Systemd {
-    fn restart(&self) -> CommandFuture<'_> {
-        Box::pin(Systemd::restart(self))
+    async fn restart(&self) -> AppResult<CommandReport> {
+        Systemd::restart(self).await
     }
 }
 
-pub struct ConfigApplyRequest<'a> {
+pub(crate) struct ConfigApplyRequest<'a> {
     pub config_file: &'a Path,
     pub backup_dir: &'a Path,
     pub content: &'a str,
@@ -46,20 +42,20 @@ pub struct ConfigApplyRequest<'a> {
 }
 
 #[derive(Debug)]
-pub struct ConfigApplyResult {
+pub(crate) struct ConfigApplyResult {
     pub backup: BackupInfo,
     pub test: CommandReport,
     pub reload: Option<CommandReport>,
 }
 
-pub async fn apply_config<T, R>(
+pub(crate) async fn apply_config<T, R>(
     request: ConfigApplyRequest<'_>,
     tester: &T,
     restarter: &R,
 ) -> AppResult<ConfigApplyResult>
 where
-    T: ConfigTester + ?Sized,
-    R: ServiceRestarter + ?Sized,
+    T: ConfigTester,
+    R: ServiceRestarter,
 {
     let config_file = atomic_write::resolve_target(request.config_file).await?;
     let test = test_content(&config_file, request.content, tester).await?;
@@ -114,13 +110,13 @@ where
     })
 }
 
-pub async fn test_content<T>(
+pub(crate) async fn test_content<T>(
     config_file: &Path,
     content: &str,
     tester: &T,
 ) -> AppResult<CommandReport>
 where
-    T: ConfigTester + ?Sized,
+    T: ConfigTester,
 {
     let temp_path = atomic_write::write_temp_near(config_file, content).await?;
     let report = tester.test_config(&temp_path).await;
@@ -136,8 +132,8 @@ async fn rollback_config<T, R>(
     restarter: &R,
 ) -> RollbackStatus
 where
-    T: ConfigTester + ?Sized,
-    R: ServiceRestarter + ?Sized,
+    T: ConfigTester,
+    R: ServiceRestarter,
 {
     let backup_path = match backup::checked_backup_file(backup_dir, &backup.id).await {
         Ok(path) => path,
@@ -222,7 +218,7 @@ mod tests {
     use tokio::fs;
     use tokio::sync::Mutex;
 
-    use super::{CommandFuture, ConfigApplyRequest, ConfigTester, ServiceRestarter, apply_config};
+    use super::{ConfigApplyRequest, ConfigTester, ServiceRestarter, apply_config};
     use crate::api_types::CommandReport;
     use crate::error::{AppError, RollbackStatus};
     use crate::server::config_revision;
@@ -439,15 +435,13 @@ mod tests {
     }
 
     impl ConfigTester for FakeTester {
-        fn test_config<'a>(&'a self, _config_path: &'a Path) -> CommandFuture<'a> {
-            Box::pin(async move {
-                self.calls.fetch_add(1, Ordering::SeqCst);
-                self.responses
-                    .lock()
-                    .await
-                    .pop_front()
-                    .unwrap_or_else(|| Ok(command_report("test")))
-            })
+        async fn test_config(&self, _config_path: &Path) -> AppResult<CommandReport> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.responses
+                .lock()
+                .await
+                .pop_front()
+                .unwrap_or_else(|| Ok(command_report("test")))
         }
     }
 
@@ -456,11 +450,9 @@ mod tests {
     }
 
     impl ConfigTester for MutatingTester {
-        fn test_config<'a>(&'a self, _config_path: &'a Path) -> CommandFuture<'a> {
-            Box::pin(async move {
-                fs::write(&self.config_file, "address=/external.example/10.0.0.3\n").await?;
-                Ok(command_report("test"))
-            })
+        async fn test_config(&self, _config_path: &Path) -> AppResult<CommandReport> {
+            fs::write(&self.config_file, "address=/external.example/10.0.0.3\n").await?;
+            Ok(command_report("test"))
         }
     }
 
@@ -483,15 +475,13 @@ mod tests {
     }
 
     impl ServiceRestarter for FakeRestarter {
-        fn restart(&self) -> CommandFuture<'_> {
-            Box::pin(async move {
-                self.calls.fetch_add(1, Ordering::SeqCst);
-                self.responses
-                    .lock()
-                    .await
-                    .pop_front()
-                    .unwrap_or_else(|| Ok(command_report("restart")))
-            })
+        async fn restart(&self) -> AppResult<CommandReport> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.responses
+                .lock()
+                .await
+                .pop_front()
+                .unwrap_or_else(|| Ok(command_report("restart")))
         }
     }
 

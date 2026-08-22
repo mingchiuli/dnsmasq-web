@@ -32,7 +32,7 @@ file and permission to test and reload the dnsmasq service.
 
 ```bash
 cargo install cargo-leptos --locked
-rustup toolchain install 1.96.0 --component clippy,rustfmt --target wasm32-unknown-unknown
+rustup toolchain install 1.98.0 --component clippy,rustfmt --target wasm32-unknown-unknown
 cargo leptos build --release
 ```
 
