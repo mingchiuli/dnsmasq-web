@@ -1,3 +1,4 @@
+mod address_rules;
 pub mod address_table;
 pub mod cname_table;
 pub mod host_record_table;

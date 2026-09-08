@@ -53,6 +53,11 @@ pub enum Msg {
     AddressEmpty,
     AddressHelp,
     AddressIpPlaceholder,
+    AddressLocalOnly,
+    AddressLocalHelp,
+    AddressInvalid,
+    LocalRuleEnabled,
+    LocalRuleNotSet,
     Apply,
     Alias,
     BackupId,
@@ -135,9 +140,16 @@ const fn zh_cn(msg: Msg) -> &'static str {
         Msg::AddressDomainPlaceholder => "gateway.example.com 或 .example.com",
         Msg::AddressEmpty => "暂无 address 记录",
         Msg::AddressHelp => {
-            "A 对应 IPv4，AAAA 对应 IPv6。同一域名可各配置一条。仅配置地址不一定阻止其他类型的查询转发到上游；需要时请在 Server 中添加该域名的“仅本地解析”规则。"
+            "A 对应 IPv4，AAAA 对应 IPv6。同一域名可各配置一条，并共用“仅本地解析”设置。可直接在编辑框勾选，无需再去 Server 重复填写。"
         }
         Msg::AddressIpPlaceholder => "10.10.0.1 或 fd00::1",
+        Msg::AddressLocalOnly => "仅本地解析，不向上游查询其他记录类型",
+        Msg::AddressLocalHelp => {
+            "此设置与 Server 中的同域名规则同步；取消勾选会删除对应受管规则。删除记录或修改域名会保留原域名规则。原始 local=、区块外规则和父域规则仍需单独维护。"
+        }
+        Msg::AddressInvalid => "请填写有效域名和 IP；同一域名的 IPv4、IPv6 各允许一条。",
+        Msg::LocalRuleEnabled => "已配置",
+        Msg::LocalRuleNotSet => "未配置直接规则",
         Msg::Apply => "一键生效",
         Msg::Alias => "别名",
         Msg::BackupId => "备份 ID",
@@ -216,9 +228,20 @@ const fn en(msg: Msg) -> &'static str {
         Msg::AddressDomainPlaceholder => "gateway.example.com or .example.com",
         Msg::AddressEmpty => "No address records",
         Msg::AddressHelp => {
-            "A is IPv4; AAAA is IPv6. Each domain can have one of each. Address rules alone may still forward other query types upstream. To prevent this, add a local-only rule for the domain in Server."
+            "A is IPv4; AAAA is IPv6. Each domain can have one of each and shares the local-only setting. Enable it in the editor without entering the domain again in Server."
         }
         Msg::AddressIpPlaceholder => "10.10.0.1 or fd00::1",
+        Msg::AddressLocalOnly => {
+            "Resolve locally only; do not query upstream for other record types"
+        }
+        Msg::AddressLocalHelp => {
+            "This setting shares the domain's rule with Server; unchecking removes that managed rule. Deleting or renaming an Address retains the old domain's rule. Raw local= directives, rules outside the managed block, and parent-domain rules require separate maintenance."
+        }
+        Msg::AddressInvalid => {
+            "Enter a valid domain and IP; each domain permits one IPv4 and one IPv6 address."
+        }
+        Msg::LocalRuleEnabled => "Configured",
+        Msg::LocalRuleNotSet => "No direct rule",
         Msg::Apply => "Apply",
         Msg::Alias => "Alias",
         Msg::BackupId => "Backup ID",

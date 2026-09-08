@@ -121,7 +121,11 @@ fn dashboard(initial: BootstrapResponse) -> impl IntoView {
                 <main class="content">
                     <DashboardTabPanel value=TAB_ADDRESS active_tab=active_tab.into()>
                         <Show when=move || active_tab.with(|tab| tab == TAB_ADDRESS)>
-                            <AddressTable records=workspace.address locale=locale.into() />
+                            <AddressTable
+                                records=workspace.address
+                                servers=workspace.server
+                                locale=locale.into()
+                            />
                         </Show>
                     </DashboardTabPanel>
                     <DashboardTabPanel value=TAB_HOST_RECORD active_tab=active_tab.into()>

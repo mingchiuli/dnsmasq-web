@@ -319,6 +319,18 @@ textarea:focus-visible,
   font-weight: 600;
 }
 
+.local-only-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.local-only-option input {
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
 .ui-input,
 .ui-textarea {
   width: 100%;

@@ -14,11 +14,24 @@ Address accepts IPv4 (A) and IPv6 (AAAA), one address per row and at most one
 of each family per domain. For a dual-stack domain, add two rows with the same
 domain and the respective IPv4 and IPv6 addresses.
 
-In Server, choose **Local only** and enter a domain to prevent upstream queries
-for that domain and its subdomains. This writes `server=/domain/`, equivalent to
-`local=/domain/`. More specific forwarding rules can override a broader local-only
-rule. Existing `local=` directives remain in Raw Config and must be edited there;
-they are not imported into the Server table or removed by deleting a Server row.
+In the Address editor, enable **Resolve locally only** to prevent upstream queries
+for that domain and its subdomains. The editor maintains the corresponding
+`server=/domain/` rule automatically; no second entry in Server is necessary.
+Existing managed rules are reflected in the checkbox. IPv4 and IPv6 rows for the
+same domain share this setting, as does the Server page, which still supports
+independent local-only rules. Matching ignores case, surrounding whitespace, and
+an equivalent leading dot.
+
+Unchecking removes the matching managed local-only rules, leaving normal upstream
+rules untouched. Deleting or renaming an Address retains the old domain's rule;
+remove it separately in Server if no longer needed. Invalid or cancelled edits do
+not change either draft.
+
+`server=/domain/` is equivalent to `local=/domain/`. More specific forwarding rules
+can override a broader local-only rule. The checkbox and table status describe only
+the domain's direct managed Server rule. Raw `local=` directives, rules outside
+the managed block, and parent-domain rules are preserved and require separate
+maintenance; an unchecked box does not imply that upstream queries are allowed.
 
 For an IPv4-only internal service, for example:
 
