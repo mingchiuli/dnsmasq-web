@@ -66,7 +66,7 @@ pub fn host_record_table(
                 key=|row| row.id
                 children=move |row| {
                     let id = row.id;
-                    let value = row.value;
+                    let value = RwSignal::from(row.value);
                     view! {
                         <tr>
                             <td>{move || value.with(|record| record.names.join(", "))}</td>

@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 
-use crate::config::model::ServerRecord;
+use crate::config::model::{DnsRecords, ServerRecord};
+use crate::config::validate::{has_errors, validate_records};
 use crate::i18n::{Locale, Msg, t};
 use crate::ui::components::editable_table::{
     EditableTable, EditableTableActions, EditableTableColumns, RecordEditor,
@@ -18,11 +19,15 @@ pub fn server_table(
     let editing_id = RwSignal::new(None::<u64>);
     let domain = RwSignal::new(String::new());
     let upstream = RwSignal::new(String::new());
+    let local_only = RwSignal::new(false);
+    let invalid = RwSignal::new(false);
 
     let open_new = move || {
         editing_id.set(None);
         domain.set(String::new());
         upstream.set(String::new());
+        local_only.set(false);
+        invalid.set(false);
         modal_open.set(true);
     };
 
@@ -31,7 +36,9 @@ pub fn server_table(
             value.with(|record| {
                 domain.set(record.domain.clone().unwrap_or_default());
                 upstream.set(record.upstream.clone());
+                local_only.set(record.upstream.trim().is_empty());
             });
+            invalid.set(false);
             editing_id.set(Some(id));
             modal_open.set(true);
         }
@@ -39,14 +46,24 @@ pub fn server_table(
 
     let save = move || {
         let domain_value = domain.get_untracked();
-        upsert_row(
-            records,
-            editing_id.get_untracked(),
-            ServerRecord {
-                domain: non_empty(domain_value),
-                upstream: upstream.get_untracked(),
+        let record = ServerRecord {
+            domain: non_empty(domain_value),
+            upstream: if local_only.get_untracked() {
+                String::new()
+            } else {
+                upstream.get_untracked().trim().to_string()
             },
-        );
+        };
+        if (!local_only.get_untracked() && record.upstream.is_empty())
+            || has_errors(&validate_records(&DnsRecords {
+                server: vec![record.clone()],
+                ..DnsRecords::default()
+            }))
+        {
+            invalid.set(true);
+            return;
+        }
+        upsert_row(records, editing_id.get_untracked(), record);
         modal_open.set(false);
     };
 
@@ -60,6 +77,7 @@ pub fn server_table(
         >
             <EditableTableColumns slot>
                 <th scope="col">{move || t(locale.get(), Msg::DomainScope)}</th>
+                <th scope="col">{move || t(locale.get(), Msg::ResolutionMode)}</th>
                 <th scope="col">{move || t(locale.get(), Msg::Upstream)}</th>
             </EditableTableColumns>
             <For
@@ -67,13 +85,22 @@ pub fn server_table(
                 key=|row| row.id
                 children=move |row| {
                     let id = row.id;
-                    let value = row.value;
+                    let value = RwSignal::from(row.value);
                     view! {
                         <tr>
                             <td>
                                 {move || value.with(|record| record.domain.as_deref().unwrap_or("*").to_string())}
                             </td>
-                            <td>{move || value.with(|record| record.upstream.clone())}</td>
+                            <td>{move || value.with(|record| t(locale.get(), if record.upstream.trim().is_empty() {
+                                Msg::LocalOnly
+                            } else {
+                                Msg::ForwardUpstream
+                            }))}</td>
+                            <td>{move || value.with(|record| if record.upstream.trim().is_empty() {
+                                String::from("—")
+                            } else {
+                                record.upstream.clone()
+                            })}</td>
                             <EditableTableActions
                                 locale=locale
                                 on_edit=move |_| open_edit(id)
@@ -84,6 +111,7 @@ pub fn server_table(
                 }
             />
         </EditableTable>
+        <p class="muted">{move || t(locale.get(), Msg::ServerLocalHelp)}</p>
 
         <RecordEditor
             open=modal_open
@@ -91,18 +119,48 @@ pub fn server_table(
             locale=locale
             on_save=move |_| save()
         >
+            <Field label=localized(locale, Msg::ResolutionMode)>
+                <select
+                    class="ui-input"
+                    prop:value=move || if local_only.get() { "local" } else { "forward" }
+                    on:change=move |event| {
+                        local_only.set(event_target_value(&event) == "local");
+                        invalid.set(false);
+                    }
+                >
+                    <option value="forward" selected=move || !local_only.get()>
+                        {move || t(locale.get(), Msg::ForwardUpstream)}
+                    </option>
+                    <option value="local" selected=move || local_only.get()>
+                        {move || t(locale.get(), Msg::LocalOnly)}
+                    </option>
+                </select>
+            </Field>
             <Field label=localized(locale, Msg::DomainScope)>
                 <Input
                     value=domain
-                    placeholder=localized(locale, Msg::ServerDomainPlaceholder)
+                    placeholder=Signal::derive(move || t(locale.get(), if local_only.get() {
+                        Msg::ServerLocalDomainPlaceholder
+                    } else {
+                        Msg::ServerDomainPlaceholder
+                    }).to_string())
                 />
             </Field>
-            <Field label=localized(locale, Msg::Upstream)>
-                <Input
-                    value=upstream
-                    placeholder=localized(locale, Msg::ServerUpstreamPlaceholder)
-                />
-            </Field>
+            <Show when=move || !local_only.get()>
+                <Field label=localized(locale, Msg::Upstream)>
+                    <Input
+                        value=upstream
+                        placeholder=localized(locale, Msg::ServerUpstreamPlaceholder)
+                    />
+                </Field>
+            </Show>
+            <Show when=move || invalid.get()>
+                <p role="alert">{move || t(locale.get(), if local_only.get() {
+                    Msg::ServerLocalInvalid
+                } else {
+                    Msg::ServerForwardInvalid
+                })}</p>
+            </Show>
         </RecordEditor>
     }
 }

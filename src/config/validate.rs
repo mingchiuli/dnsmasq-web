@@ -19,23 +19,24 @@ pub fn has_errors(issues: &[ValidationIssue]) -> bool {
 }
 
 fn validate_address(records: &DnsRecords, issues: &mut Vec<ValidationIssue>) {
-    let mut seen = HashMap::<String, usize>::new();
+    let mut seen = HashMap::<(String, bool), usize>::new();
     for (idx, record) in records.address.iter().enumerate() {
         let field = format!("address[{idx}]");
         if !is_domain_like(&record.domain) {
             error(issues, &field, "address domain is invalid");
         }
-        if record.ip.parse::<IpAddr>().is_err() {
+        let Ok(ip) = record.ip.parse::<IpAddr>() else {
             error(issues, &field, "address ip is invalid");
-        }
+            continue;
+        };
 
         let domain = record.domain.trim().to_ascii_lowercase();
-        if let Some(first_idx) = seen.insert(domain, idx) {
+        if let Some(first_idx) = seen.insert((domain, ip.is_ipv6()), idx) {
             error(
                 issues,
                 &field,
                 format!(
-                    "duplicate address domain: {} also exists at address[{first_idx}]",
+                    "duplicate address domain: {} has the same address family at address[{first_idx}]",
                     record.domain.trim()
                 ),
             );
@@ -106,7 +107,11 @@ fn validate_server(records: &DnsRecords, issues: &mut Vec<ValidationIssue>) {
         {
             error(issues, &field, "server domain scope is invalid");
         }
-        if !is_upstream_like(&record.upstream) {
+        if record.upstream.trim().is_empty() {
+            if !record.domain.as_deref().is_some_and(is_domain_like) {
+                error(issues, &field, "local-only server requires a valid domain");
+            }
+        } else if !is_upstream_like(&record.upstream) {
             error(issues, &field, "server upstream is invalid");
         }
         let key = format!(
@@ -115,15 +120,12 @@ fn validate_server(records: &DnsRecords, issues: &mut Vec<ValidationIssue>) {
                 .domain
                 .as_deref()
                 .unwrap_or_default()
+                .trim()
                 .to_ascii_lowercase(),
-            record.upstream.to_ascii_lowercase()
+            record.upstream.trim().to_ascii_lowercase()
         );
-        if !seen.insert(key) {
-            warning(
-                issues,
-                &field,
-                format!("duplicate server upstream: {}", record.upstream),
-            );
+        if !seen.insert(key.clone()) {
+            warning(issues, &field, format!("duplicate server rule: {key}"));
         }
     }
 }

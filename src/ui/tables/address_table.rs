@@ -59,6 +59,7 @@ pub fn address_table(
         >
             <EditableTableColumns slot>
                 <th scope="col">{move || t(locale.get(), Msg::Domain)}</th>
+                <th scope="col">{move || t(locale.get(), Msg::RecordType)}</th>
                 <th scope="col">{move || t(locale.get(), Msg::Ip)}</th>
             </EditableTableColumns>
             <For
@@ -66,10 +67,15 @@ pub fn address_table(
                 key=|row| row.id
                 children=move |row| {
                     let id = row.id;
-                    let value = row.value;
+                    let value = RwSignal::from(row.value);
                     view! {
                         <tr>
                             <td>{move || value.with(|record| record.domain.clone())}</td>
+                            <td>{move || value.with(|record| match record.ip.parse::<std::net::IpAddr>() {
+                                Ok(std::net::IpAddr::V4(_)) => "A",
+                                Ok(std::net::IpAddr::V6(_)) => "AAAA",
+                                Err(_) => "—",
+                            })}</td>
                             <td>{move || value.with(|record| record.ip.clone())}</td>
                             <EditableTableActions
                                 locale=locale
@@ -81,6 +87,7 @@ pub fn address_table(
                 }
             />
         </EditableTable>
+        <p class="muted">{move || t(locale.get(), Msg::AddressHelp)}</p>
 
         <RecordEditor
             open=modal_open
@@ -95,7 +102,7 @@ pub fn address_table(
                 />
             </Field>
             <Field label=localized(locale, Msg::Ip)>
-                <Input value=ip placeholder="10.10.0.1" />
+                <Input value=ip placeholder=localized(locale, Msg::AddressIpPlaceholder) />
             </Field>
         </RecordEditor>
     }

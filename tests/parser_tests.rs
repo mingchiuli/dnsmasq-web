@@ -1,4 +1,6 @@
-use dnsmasqweb::config::model::{AddressRecord, DnsRecords, MANAGED_BEGIN, MANAGED_END};
+use dnsmasqweb::config::model::{
+    AddressRecord, DnsRecords, MANAGED_BEGIN, MANAGED_END, ServerRecord,
+};
 use dnsmasqweb::config::parser::parse_config;
 use dnsmasqweb::config::records::{
     collect_records, collect_records_from_config, replace_managed_records,
@@ -7,6 +9,130 @@ use dnsmasqweb::config::render::render_config;
 use dnsmasqweb::config::validate::{has_errors, validate_records};
 
 const SAMPLE: &str = include_str!("fixtures/dnsmasq.conf");
+
+#[test]
+fn dual_stack_address_and_local_server_round_trip() {
+    let input = "address=/app.example.com/10.10.0.1\naddress=/app.example.com/fd00::1\nserver=/app.example.com/\nserver=223.5.5.5\nserver=/other.example.com/10.0.0.1#5353\n";
+    let parsed = parse_config(input).expect("parse dual stack config");
+    let records = collect_records_from_config(&parsed);
+    assert_eq!(records.address.len(), 2);
+    assert_eq!(records.server.len(), 3);
+    assert_eq!(records.server[0].domain.as_deref(), Some("app.example.com"));
+    assert!(records.server[0].upstream.is_empty());
+    assert!(!has_errors(&validate_records(&records)));
+    let rendered = render_config(
+        &replace_managed_records(&parsed, records.clone()).expect("save dual stack config"),
+    );
+    assert_eq!(
+        collect_records_from_config(&parse_config(&rendered).expect("read saved config")),
+        records
+    );
+}
+
+#[test]
+fn address_validation_distinguishes_families_and_rejects_invalid_ips() {
+    for ips in [
+        vec!["10.0.0.1"],
+        vec!["fd00::1"],
+        vec!["10.0.0.1", "fd00::1"],
+    ] {
+        let records = address_records(&ips);
+        assert!(!has_errors(&validate_records(&records)), "{ips:?}");
+    }
+    for ips in [
+        vec!["fd00::1", "fd00::2"],
+        vec!["fd00::1", "fd00:0:0:0:0:0:0:1"],
+        vec!["10.0.0.1", "10.0.0.2"],
+        vec!["not-an-ip"],
+    ] {
+        assert!(
+            has_errors(&validate_records(&address_records(&ips))),
+            "{ips:?}"
+        );
+    }
+}
+
+fn address_records(ips: &[&str]) -> DnsRecords {
+    DnsRecords {
+        address: ips
+            .iter()
+            .enumerate()
+            .map(|(idx, ip)| AddressRecord {
+                domain: if idx == 0 {
+                    "App.Example.com"
+                } else {
+                    "app.example.com"
+                }
+                .into(),
+                ip: (*ip).into(),
+            })
+            .collect(),
+        ..DnsRecords::default()
+    }
+}
+
+#[test]
+fn local_server_requires_a_domain_and_forwarding_requires_valid_upstream() {
+    for domain in [None, Some(""), Some(" "), Some("bad/domain")] {
+        let records = DnsRecords {
+            server: vec![ServerRecord {
+                domain: domain.map(String::from),
+                upstream: String::new(),
+            }],
+            ..DnsRecords::default()
+        };
+        assert!(has_errors(&validate_records(&records)), "{domain:?}");
+    }
+    let records = DnsRecords {
+        server: vec![ServerRecord {
+            domain: Some("app.example.com".into()),
+            upstream: " ".into(),
+        }],
+        ..DnsRecords::default()
+    };
+    assert!(!has_errors(&validate_records(&records)));
+    for upstream in ["bad/upstream", "10.0.0.1#invalid"] {
+        let records = DnsRecords {
+            server: vec![ServerRecord {
+                domain: None,
+                upstream: upstream.into(),
+            }],
+            ..DnsRecords::default()
+        };
+        assert!(has_errors(&validate_records(&records)));
+    }
+}
+
+#[test]
+fn local_server_edits_preserve_raw_local_rules_and_block_boundaries() {
+    let input = format!(
+        "server=/outside.example.com/\n{MANAGED_BEGIN}\n# keep\n\nlocal=/raw.example.com/\nserver=/app.example.com/\nserver=/one.example.com/two.example.com/\n{MANAGED_END}\n"
+    );
+    let parsed = parse_config(&input).expect("parse local server");
+    let records = collect_records_from_config(&parsed);
+    assert_eq!(records.server.len(), 1);
+    let mut edited = records;
+    edited.server[0].upstream = "10.0.0.53".into();
+    let rendered =
+        render_config(&replace_managed_records(&parsed, edited).expect("edit local rule"));
+    assert!(rendered.contains("server=/app.example.com/10.0.0.53"));
+    let edited = parse_config(&rendered).expect("read edited rule");
+    let rendered = render_config(
+        &replace_managed_records(&edited, DnsRecords::default()).expect("delete rule"),
+    );
+    assert!(!rendered.contains("server=/app.example.com/"));
+    assert!(rendered.contains("server=/outside.example.com/"));
+    assert!(rendered.contains("# keep\n\nlocal=/raw.example.com/"));
+    assert!(rendered.contains("server=/one.example.com/two.example.com/"));
+}
+
+#[test]
+fn incomplete_or_advanced_server_syntax_remains_raw() {
+    let input = "server=/app.example.com\nserver=//\nserver=/a.example/b.example/\nlocal=/app.example.com/\n";
+    let parsed = parse_config(input).expect("parse unsupported syntax");
+    assert!(collect_records_from_config(&parsed).server.is_empty());
+    assert_eq!(render_config(&parsed), input);
+}
 
 #[test]
 fn parses_current_dnsmasq_shape() {

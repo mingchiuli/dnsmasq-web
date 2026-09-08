@@ -10,6 +10,31 @@ Small Rust web UI for managing a limited dnsmasq static DNS surface:
 Unknown directives, comments, and blank lines are preserved. They can still be
 edited from the raw config editor.
 
+Address accepts IPv4 (A) and IPv6 (AAAA), one address per row and at most one
+of each family per domain. For a dual-stack domain, add two rows with the same
+domain and the respective IPv4 and IPv6 addresses.
+
+In Server, choose **Local only** and enter a domain to prevent upstream queries
+for that domain and its subdomains. This writes `server=/domain/`, equivalent to
+`local=/domain/`. More specific forwarding rules can override a broader local-only
+rule. Existing `local=` directives remain in Raw Config and must be edited there;
+they are not imported into the Server table or removed by deleting a Server row.
+
+For an IPv4-only internal service, for example:
+
+```ini
+address=/app.example.com/10.10.0.1
+server=/app.example.com/
+```
+
+A queries receive `10.10.0.1`; AAAA queries receive no address when no local IPv6
+record exists, without querying upstream. Since dnsmasq 2.86, an Address rule alone
+can forward queries for other record types upstream. Local-only mode is opt-in;
+do not add an IPv6 address unless that address actually serves your application.
+
+**Save** writes the configuration without applying it. **Apply** saves and restarts
+dnsmasq to load the configuration; client-side DNS caches may still retain old answers.
+
 The optional `dnsmasqweb managed records` block is parsed as a single explicit
 BEGIN/END region. Comments, blank lines, and unknown directives inside that
 region are preserved when structured records are saved. Unmatched, nested, or
@@ -61,12 +86,27 @@ LEPTOS_OUTPUT_NAME=dnsmasqweb cargo build --release --bin dnsmasqweb \
   --no-default-features --features ssr,embedded-assets
 ```
 
+## Additional regression checks
+
+DNS and container checks require Python 3 without any additional Python packages:
+
+```bash
+python3 tests/docker_shim_tests.py
+DNSMASQ_BIN=/path/to/dnsmasq python3 tests/dns_behavior_tests.py
+docker build -t dnsmasqweb:test .
+DNSMASQWEB_TEST_IMAGE=dnsmasqweb:test python3 tests/docker_smoke_tests.py
+```
+
+The DNS checks use dnsmasq 2.86 or newer on isolated loopback ports with a controlled
+test upstream. The portable shim tests use a fake daemon; the Docker smoke tests
+exercise real Linux process handling and DNS responses in disposable containers.
+
 ## Docker
 
 A `Dockerfile` packages the web UI together with dnsmasq into a single image. The
 standalone binary embeds the frontend assets, so the image needs no separate site
 directory. Inside the container a minimal `systemctl` shim (`docker/systemctl`)
-reloads the bundled dnsmasq process, since systemd is not available.
+restarts the bundled dnsmasq process, since systemd is not available.
 
 Build:
 
@@ -100,10 +140,13 @@ docker run -d --name dnsmasqweb \
 The container runs as root so it can replace the config file, keep backups
 (`0700`) and the password hash (`0600`) private, and bind port 53. The web UI
 listens on `0.0.0.0:8080` inside the image; do not publish that port to the
-public internet. Saving a config reloads dnsmasq by re-reading the config
-(`SIGHUP`), which applies the records this UI manages. Settings that can only
-change on a full restart (for example `port=` or `interface=`) take effect when
-the container restarts.
+public internet. Apply stops dnsmasq, waits for it to exit, and starts a new process
+to read the configuration, briefly interrupting DNS service. This also loads settings
+such as `port=` and `interface=`. Save alone does not restart the process.
+The shim checks the PID file and process identity, waits up to five seconds for
+shutdown, and reports startup failures so the web service can restore the backup.
+`reload` sends `SIGHUP`, which refreshes caches and hosts data but does **not**
+re-read the main configuration file; the web service uses `restart`, not `reload`.
 
 No `HEALTHCHECK` is baked into the image so you can define your own, for example
 in `docker-compose.yml`:

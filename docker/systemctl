@@ -2,8 +2,8 @@
 # Minimal systemctl replacement for the dnsmasqweb container.
 #
 # systemd is not available inside the container. This shim supports only the
-# dnsmasq service operations the web UI issues, by signalling the dnsmasq
-# process started by the entrypoint. Any other service or action fails with a
+# dnsmasq service operations the web UI issues, using its checked PID file.
+# Any other service or action fails with a
 # non-zero exit so the web UI's error handling (including config rollback)
 # behaves as it does on a host with real systemd.
 
@@ -18,9 +18,52 @@ if [ "$service" != "dnsmasq" ]; then
 fi
 
 config_file="${DNSMASQWEB_CONFIG:-/etc/dnsmasq.conf}"
+pid_file=/run/dnsmasq.pid
+
+process_is_dnsmasq() {
+    case "$1" in
+        '' | *[!0-9]*) return 1 ;;
+    esac
+    [ "$1" -gt 1 ] || return 1
+    kill -0 "$1" 2>/dev/null || return 1
+    # /proc/PID/exe may require CAP_SYS_PTRACE after dnsmasq drops privileges.
+    # comm/cmdline remain readable with the container's normal capabilities.
+    [ "$(cat "/proc/$1/comm" 2>/dev/null)" = dnsmasq ] || return 1
+    process_args=$(tr '\000' '\n' <"/proc/$1/cmdline" 2>/dev/null) || return 1
+    printf '%s\n' "$process_args" | grep -Fxq -- "--conf-file=$config_file" || return 1
+    printf '%s\n' "$process_args" | grep -Fxq -- "--pid-file=$pid_file"
+}
+
+read_pid() {
+    dnsmasq_pid=$(cat "$pid_file" 2>/dev/null) || return 1
+    process_is_dnsmasq "$dnsmasq_pid"
+}
 
 is_running() {
-    pgrep -x dnsmasq >/dev/null 2>&1
+    read_pid
+}
+
+stop_dnsmasq() {
+    read_pid || return 0
+    stop_process "$dnsmasq_pid"
+}
+
+stop_process() {
+    stopped_pid=$1
+    if ! kill -TERM "$stopped_pid"; then
+        process_is_dnsmasq "$stopped_pid" || return 0
+        echo "systemctl: failed to stop dnsmasq ($stopped_pid)" >&2
+        return 1
+    fi
+    remaining=5
+    while process_is_dnsmasq "$stopped_pid"; do
+        if [ "$remaining" -eq 0 ]; then
+            echo "systemctl: dnsmasq ($stopped_pid) did not stop within 5 seconds" >&2
+            return 1
+        fi
+        sleep 1
+        remaining=$((remaining - 1))
+    done
 }
 
 start_dnsmasq() {
@@ -28,17 +71,28 @@ start_dnsmasq() {
         return 0
     fi
     if [ ! -f "$config_file" ]; then
-        : > "$config_file"
-    fi
-    /usr/sbin/dnsmasq --keep-in-foreground \
-        --conf-file="$config_file" \
-        --pid-file=/run/dnsmasq.pid &
-    # Give it a moment to bind its sockets and stay up.
-    sleep 1
-    if ! is_running; then
-        echo "systemctl: dnsmasq failed to start" >&2
+        echo "systemctl: config file does not exist: $config_file" >&2
         return 1
     fi
+    # Do not inherit the web service's command-capture pipes: a persistent child
+    # would keep them open and make command.output() time out after a good start.
+    /usr/sbin/dnsmasq --keep-in-foreground \
+        --conf-file="$config_file" \
+        --pid-file="$pid_file" \
+        </dev/null >/proc/1/fd/1 2>/proc/1/fd/2 &
+    started_pid=$!
+    # Give it a moment to bind its sockets and stay up.
+    sleep 1
+    if ! read_pid || [ "$dnsmasq_pid" != "$started_pid" ]; then
+        echo "systemctl: dnsmasq failed to start" >&2
+        # Clean up only the process this invocation started, even if it failed
+        # before writing its PID file, so rollback can start the old config.
+        if process_is_dnsmasq "$started_pid"; then
+            stop_process "$started_pid" || return 1
+        fi
+        return 1
+    fi
+    return 0
 }
 
 case "$action" in
@@ -54,19 +108,23 @@ case "$action" in
         start_dnsmasq
         ;;
     stop)
-        pkill -x dnsmasq || true
+        stop_dnsmasq
         ;;
-    restart | reload | try-restart | force-reload)
+    restart | force-reload)
+        stop_dnsmasq && start_dnsmasq
+        ;;
+    try-restart)
         if is_running; then
-            # dnsmasq re-reads its configuration on SIGHUP. The web UI validates
-            # the candidate config with `dnsmasq --test` before reloading, so the
-            # running process should always accept the new configuration.
-            pkill -HUP -x dnsmasq || true
-            # If the process disappeared between the check and the signal, bring
-            # it back up.
-            is_running || start_dnsmasq
+            stop_dnsmasq && start_dnsmasq
+        fi
+        ;;
+    reload)
+        # SIGHUP refreshes caches/hosts data, NOT the main configuration file.
+        if read_pid; then
+            kill -HUP "$dnsmasq_pid"
         else
-            start_dnsmasq
+            echo "systemctl: dnsmasq is not running" >&2
+            exit 1
         fi
         ;;
     *)

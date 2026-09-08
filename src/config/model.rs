@@ -45,6 +45,7 @@ pub struct CnameRecord {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerRecord {
     pub domain: Option<String>,
+    /// An empty upstream with a valid domain means local-only resolution.
     pub upstream: String,
 }
 

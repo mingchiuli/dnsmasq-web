@@ -32,7 +32,7 @@ RUN cargo build --release --bin dnsmasqweb \
 FROM debian:bookworm-slim
 
 # dnsmasq: the daemon itself and the binary used for `dnsmasq --test` validation.
-# procps: pgrep/pkill used by the systemctl shim.
+# procps: pgrep for optional user-defined healthchecks.
 # curl: HTTP probe for healthchecks users define (e.g. in Docker Compose).
 # tini: init/process reaper so signals reach the foreground processes.
 RUN apt-get update && apt-get install -y --no-install-recommends \

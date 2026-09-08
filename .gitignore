@@ -26,6 +26,9 @@ dist/
 *.tmp
 *.pid
 
+# Python regression test bytecode
+__pycache__/
+
 # macOS
 .DS_Store
 

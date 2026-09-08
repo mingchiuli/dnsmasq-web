@@ -3,7 +3,7 @@ pub mod cname_table;
 pub mod host_record_table;
 pub mod server_table;
 
-use leptos::prelude::{GetUntracked, RwSignal, Set, Update, With};
+use leptos::prelude::{ArcRwSignal, GetUntracked, RwSignal, Set, Update, With};
 use std::cell::Cell;
 
 thread_local! {
@@ -13,14 +13,15 @@ thread_local! {
 #[derive(Clone)]
 pub struct EditableRow<T> {
     pub id: u64,
-    pub value: RwSignal<T>,
+    // Draft records outlive the tab owner that created or displayed them.
+    pub value: ArcRwSignal<T>,
 }
 
 impl<T: Send + Sync + 'static> EditableRow<T> {
     pub fn new(value: T) -> Self {
         Self {
             id: next_editable_row_id(),
-            value: RwSignal::new(value),
+            value: ArcRwSignal::new(value),
         }
     }
 }
@@ -44,12 +45,12 @@ pub fn row_values<T: Clone + Send + Sync + 'static>(rows: &[EditableRow<T>]) -> 
 pub fn find_row<T: Send + Sync + 'static>(
     rows: RwSignal<Vec<EditableRow<T>>>,
     id: u64,
-) -> Option<RwSignal<T>> {
+) -> Option<ArcRwSignal<T>> {
     rows.with(|items| {
         items
             .iter()
             .find(|item| item.id == id)
-            .map(|item| item.value)
+            .map(|item| item.value.clone())
     })
 }
 
@@ -71,4 +72,32 @@ pub fn upsert_row<T: Send + Sync + 'static>(
         }
         items.push(EditableRow::new(value));
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use leptos::prelude::Owner;
+
+    #[test]
+    fn draft_records_survive_tab_disposal_and_remain_editable() {
+        let workspace = Owner::new();
+        let rows = workspace.with(|| RwSignal::new(Vec::<EditableRow<String>>::new()));
+        let tab = workspace.with(Owner::new);
+        tab.with(|| upsert_row(rows, None, String::from("draft")));
+        let id = rows.with(|rows| rows[0].id);
+        tab.with(|| {
+            let view_value = RwSignal::from(find_row(rows, id).expect("draft row"));
+            assert_eq!(view_value.get_untracked(), "draft");
+        });
+        tab.cleanup();
+
+        assert_eq!(rows.with(|rows| row_values(rows)), vec!["draft"]);
+        workspace.with(|| upsert_row(rows, Some(id), String::from("edited")));
+        assert_eq!(rows.with(|rows| rows[0].id), id);
+        assert_eq!(rows.with(|rows| row_values(rows)), vec!["edited"]);
+        remove_row(rows, id);
+        assert!(rows.with(Vec::is_empty));
+        workspace.cleanup();
+    }
 }

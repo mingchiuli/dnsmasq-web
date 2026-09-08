@@ -1,9 +1,8 @@
 #!/bin/sh
 # Container entrypoint for the dnsmasqweb image.
 #
-# Starts dnsmasq in the foreground (as a background child of this shell, which is
-# then replaced by dnsmasqweb via exec) so the systemctl shim can reload it with
-# SIGHUP, then runs the web service. tini is PID 1 and reaps the children.
+# Starts dnsmasq through the same checked lifecycle used when applying config,
+# then runs the web service. tini is PID 1 and reaps the background children.
 
 set -eu
 
@@ -22,12 +21,7 @@ if [ ! -f "$config_file" ]; then
     : > "$config_file"
 fi
 
-# Start dnsmasq if it is not already running (e.g. it was started by the
-# systemctl shim before this entrypoint reached this point).
-if ! pgrep -x dnsmasq >/dev/null 2>&1; then
-    /usr/sbin/dnsmasq --keep-in-foreground \
-        --conf-file="$config_file" \
-        --pid-file=/run/dnsmasq.pid &
-fi
+# set -e prevents the web service from starting if dnsmasq cannot start.
+/usr/local/bin/systemctl start dnsmasq
 
 exec /usr/local/bin/dnsmasqweb "$@"

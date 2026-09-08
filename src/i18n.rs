@@ -51,6 +51,8 @@ pub enum Msg {
     Address,
     AddressDomainPlaceholder,
     AddressEmpty,
+    AddressHelp,
+    AddressIpPlaceholder,
     Apply,
     Alias,
     BackupId,
@@ -93,6 +95,14 @@ pub enum Msg {
     RawConfigSavedApplied,
     RecordsSaved,
     RecordsSavedApplied,
+    RecordType,
+    ResolutionMode,
+    LocalOnly,
+    ForwardUpstream,
+    ServerLocalHelp,
+    ServerLocalDomainPlaceholder,
+    ServerLocalInvalid,
+    ServerForwardInvalid,
     Refresh,
     Restore,
     RestoreApplied,
@@ -124,6 +134,10 @@ const fn zh_cn(msg: Msg) -> &'static str {
         Msg::Address => "Address",
         Msg::AddressDomainPlaceholder => "gateway.example.com 或 .example.com",
         Msg::AddressEmpty => "暂无 address 记录",
+        Msg::AddressHelp => {
+            "A 对应 IPv4，AAAA 对应 IPv6。同一域名可各配置一条。仅配置地址不一定阻止其他类型的查询转发到上游；需要时请在 Server 中添加该域名的“仅本地解析”规则。"
+        }
+        Msg::AddressIpPlaceholder => "10.10.0.1 或 fd00::1",
         Msg::Apply => "一键生效",
         Msg::Alias => "别名",
         Msg::BackupId => "备份 ID",
@@ -162,10 +176,20 @@ const fn zh_cn(msg: Msg) -> &'static str {
         Msg::PasswordChanged => "密码已修改",
         Msg::PasswordsDoNotMatch => "两次输入的密码不一致",
         Msg::RawConfig => "原始文本",
-        Msg::RawConfigSaved => "原始配置已保存",
+        Msg::RawConfigSaved => "原始配置已保存，尚未应用；点击“一键生效”加载配置",
         Msg::RawConfigSavedApplied => "原始配置已保存并生效",
-        Msg::RecordsSaved => "配置已保存",
+        Msg::RecordsSaved => "配置已保存，尚未应用；点击“一键生效”加载配置",
         Msg::RecordsSavedApplied => "配置已保存并生效",
+        Msg::RecordType => "记录类型",
+        Msg::ResolutionMode => "解析模式",
+        Msg::LocalOnly => "仅本地解析",
+        Msg::ForwardUpstream => "转发到上游",
+        Msg::ServerLocalHelp => {
+            "仅本地解析适用于指定域名及其子域名：使用本地记录回答，不向上游查询。更具体的域名转发规则仍可覆盖此规则。原始文本中的 local= 与此等价，仍需在原始文本中维护。"
+        }
+        Msg::ServerLocalDomainPlaceholder => "必填，例如 app.example.com",
+        Msg::ServerLocalInvalid => "仅本地解析需要填写有效域名。",
+        Msg::ServerForwardInvalid => "请填写有效上游和域名；域名可留空，表示默认上游。",
         Msg::Refresh => "刷新",
         Msg::Restore => "恢复",
         Msg::RestoreApplied => "备份已恢复并生效",
@@ -191,6 +215,10 @@ const fn en(msg: Msg) -> &'static str {
         Msg::Address => "Address",
         Msg::AddressDomainPlaceholder => "gateway.example.com or .example.com",
         Msg::AddressEmpty => "No address records",
+        Msg::AddressHelp => {
+            "A is IPv4; AAAA is IPv6. Each domain can have one of each. Address rules alone may still forward other query types upstream. To prevent this, add a local-only rule for the domain in Server."
+        }
+        Msg::AddressIpPlaceholder => "10.10.0.1 or fd00::1",
         Msg::Apply => "Apply",
         Msg::Alias => "Alias",
         Msg::BackupId => "Backup ID",
@@ -229,10 +257,22 @@ const fn en(msg: Msg) -> &'static str {
         Msg::PasswordChanged => "Password changed",
         Msg::PasswordsDoNotMatch => "Passwords do not match",
         Msg::RawConfig => "Raw Config",
-        Msg::RawConfigSaved => "Raw config saved",
+        Msg::RawConfigSaved => "Raw config saved, not yet applied; click Apply to load it",
         Msg::RawConfigSavedApplied => "Raw config saved and applied",
-        Msg::RecordsSaved => "Configuration saved",
+        Msg::RecordsSaved => "Configuration saved, not yet applied; click Apply to load it",
         Msg::RecordsSavedApplied => "Configuration saved and applied",
+        Msg::RecordType => "Record type",
+        Msg::ResolutionMode => "Resolution mode",
+        Msg::LocalOnly => "Local only",
+        Msg::ForwardUpstream => "Forward upstream",
+        Msg::ServerLocalHelp => {
+            "Local-only rules answer from local records without querying upstream for the domain and its subdomains. More specific forwarding rules can override them. Equivalent local= directives in Raw Config must still be maintained there."
+        }
+        Msg::ServerLocalDomainPlaceholder => "Required, e.g. app.example.com",
+        Msg::ServerLocalInvalid => "Local-only resolution requires a valid domain.",
+        Msg::ServerForwardInvalid => {
+            "Enter a valid upstream and domain; leave the domain empty for a default upstream."
+        }
         Msg::Refresh => "Refresh",
         Msg::Restore => "Restore",
         Msg::RestoreApplied => "Backup restored and applied",

@@ -162,8 +162,10 @@ fn parse_server(value: &str) -> Result<ServerRecord, String> {
     if let Some(rest) = value.strip_prefix('/') {
         let mut parts = rest.split('/');
         let domain = parts.next().unwrap_or_default();
-        let upstream = parts.next().unwrap_or_default();
-        if domain.is_empty() || upstream.is_empty() || parts.next().is_some() {
+        let upstream = parts
+            .next()
+            .ok_or("expected server=/domain/upstream or server=/domain/")?;
+        if domain.is_empty() || parts.next().is_some() {
             return Err(String::from("expected server=/domain/upstream"));
         }
 
