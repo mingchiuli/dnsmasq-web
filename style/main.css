@@ -196,6 +196,13 @@ textarea:focus-visible,
 .tabs {
   margin-bottom: 18px;
   overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .dashboard-tabs {
