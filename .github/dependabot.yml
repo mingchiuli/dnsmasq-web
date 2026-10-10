@@ -9,3 +9,21 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "weekly"
+    # Group updates so a week's bumps arrive as a couple of pull requests
+    # instead of one pull request per dependency. A dependency joins the first
+    # group it matches, so order matters.
+    groups:
+      # leptos, leptos_router and leptos_axum are released in lockstep and must
+      # share the same minor version, so majors are grouped here too: a lone
+      # major bump of one of them cannot compile.
+      leptos:
+        patterns:
+          - "leptos*"
+      # Everything else: one pull request for all minor and patch updates.
+      # Majors are left ungrouped so each is reviewed on its own.
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
